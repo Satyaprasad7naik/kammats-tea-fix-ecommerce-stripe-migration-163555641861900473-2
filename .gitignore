@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.dist/
+.DS_Store
+client/node_modules/
+client/dist/
+client/.DS_Store
+client/nohup.out
+*.log
+.env
+.env.*
