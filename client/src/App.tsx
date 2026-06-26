@@ -15,6 +15,7 @@ import PreLoader from "./components/PreLoader";
 import { useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import ShopPage from "./pages/ShopPage";
+import ProductPage from "./pages/ProductPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import CheckoutSuccessPage from "./pages/CheckoutSuccessPage";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -82,6 +83,7 @@ const App = () => {
                         <Routes>
                             <Route path="/" element={<HomePage />} />
                             <Route path="/shop" element={<ShopPage />} />
+                            <Route path="/product/:slug" element={<ProductPage />} />
                             <Route path="/checkout" element={<CheckoutPage />} />
                             <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
                             <Route path="/admin" element={<AdminDashboard />} />

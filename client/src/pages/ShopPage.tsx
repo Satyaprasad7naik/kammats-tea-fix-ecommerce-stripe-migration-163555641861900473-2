@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import Navbar from '../components/Navbar';
 import FooterSection from '../sections/FooterSection';
@@ -20,6 +21,7 @@ interface Product {
 }
 
 const ProductCard = ({ product }: { product: Product }) => {
+  const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
   const canRef = useRef<HTMLImageElement>(null);
   const piecesRef = useRef<HTMLImageElement>(null);
@@ -59,7 +61,7 @@ const ProductCard = ({ product }: { product: Product }) => {
   const [image1, image2, image3, color, textColor] = product.images;
 
   return (
-    <div ref={cardRef} className="shop-card relative flex flex-col overflow-hidden rounded-2xl cursor-pointer group" style={{ backgroundColor: color || '#d69766', aspectRatio: '3 / 4' }}>
+    <div ref={cardRef} className="shop-card relative flex flex-col overflow-hidden rounded-2xl cursor-pointer group" style={{ backgroundColor: color || '#d69766', aspectRatio: '3 / 4' }} onClick={() => navigate(`/product/${product.slug}`)}>
       {image2 && <img src={image2} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" draggable={false} />}
       {image3 && <img ref={piecesRef} src={image3} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none z-[3]" draggable={false} />}
       <div className="relative z-10 px-4 md:px-6 pt-5 md:pt-7">
