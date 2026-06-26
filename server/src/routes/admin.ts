@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -10,6 +10,25 @@ const JWT_SECRET: string = process.env.JWT_SECRET as string;
 if (!JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET is not configured in the environment.");
 }
+
+// Extend Express Request type to include user payload from JWT
+interface AuthRequest extends Request {
+  user?: string | jwt.JwtPayload;
+}
+
+const authenticateAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const token = req.cookies.admin_token;
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
 
 router.post('/login', async (req, res) => {
   try {
@@ -63,30 +82,13 @@ router.post('/logout', (req, res) => {
 });
 
 // Check auth status
-router.get('/me', (req, res) => {
-  const token = req.cookies.admin_token;
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    res.json({ admin: decoded });
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
+router.get('/me', authenticateAdmin, (req: AuthRequest, res: Response) => {
+  res.json({ admin: req.user });
 });
 
 // Get all orders (Protected)
-router.get('/orders', async (req, res) => {
+router.get('/orders', authenticateAdmin, async (req, res) => {
   try {
-    const token = req.cookies.admin_token;
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
       include: { items: true }

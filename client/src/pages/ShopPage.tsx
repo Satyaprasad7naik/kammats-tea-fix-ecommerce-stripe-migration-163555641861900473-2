@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+console.log("🔥 ShopPage.tsx LOADED");
 import gsap from 'gsap';
 import Navbar from '../components/Navbar';
 import FooterSection from '../sections/FooterSection';
 import TestimonialSection from '../sections/TestimonialSection';
 import { useCart } from '../context/CartContext';
+
+
+
+const API_URL = import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  throw new Error("FATAL ERROR: VITE_API_URL is not configured in client .env file.");
+}
 
 interface Product {
   id: string;
@@ -95,25 +103,39 @@ const ProductCard = ({ product }: { product: Product }) => {
 };
 
 const ShopPage = () => {
+  console.log("🔥 ShopPage component rendered");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const response = await fetch(`${apiUrl}/api/products`);
-        const data = await response.json();
-        setProducts(data);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+ useEffect(() => {
+  console.log("✅ ShopPage mounted");
 
-    fetchProducts();
-  }, []);
+  const fetchProducts = async () => {
+    
+    console.log("🚀 Fetching products...");
+    console.log("API:", API_URL);
+    console.log("Before fetch");
+
+    try {
+      const response = await fetch(`${API_URL}/api/products`);
+
+      console.log("Status:", response.status);
+
+      const data = await response.json();
+
+      console.log("Products:", data);
+      console.log("Count:", data.length);
+
+      setProducts(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchProducts();
+}, []);
 
   return (
     <div className="bg-[#f5ebe0] min-h-screen text-[#3e2a21] font-sans overflow-x-hidden">
@@ -131,7 +153,7 @@ const ShopPage = () => {
           ))}
         </div>
         <p className="max-w-2xl mx-auto text-center text-lg font-medium opacity-70 mt-10 px-6">
-          Browse all our bold and delicious flavors, ready to fuel your next adventure. Discover your favorite today!
+          🚨 THIS IS MY SHOP PAGE 🚨
         </p>
       </section>
 

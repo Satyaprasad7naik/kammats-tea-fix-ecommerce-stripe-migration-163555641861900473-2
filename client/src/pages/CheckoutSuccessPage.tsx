@@ -4,6 +4,11 @@ import Navbar from '../components/Navbar';
 import FooterSection from '../sections/FooterSection';
 import { useCart } from '../context/CartContext';
 
+const API_URL = import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  throw new Error("FATAL ERROR: VITE_API_URL is not configured in client .env file.");
+}
+
 const CheckoutSuccessPage = () => {
   const [searchParams] = useSearchParams();
   const paymentIntentId = searchParams.get('payment_intent');
@@ -30,8 +35,7 @@ const CheckoutSuccessPage = () => {
 
     const verifyPayment = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const res = await fetch(`${apiUrl}/api/orders/verify`, {
+        const res = await fetch(`${API_URL}/api/orders/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_intent_id: paymentIntentId })
@@ -97,7 +101,7 @@ const CheckoutSuccessPage = () => {
           </div>
           <div className="flex flex-col gap-3">
             <a
-              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/orders/${successOrder?.id}/invoice`}
+              href={`${API_URL}/api/orders/${successOrder?.id}/invoice`}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full py-4 bg-[#3e2a21] text-white font-bold rounded-xl hover:bg-[#d89945] transition-colors uppercase tracking-widest text-sm block text-center"

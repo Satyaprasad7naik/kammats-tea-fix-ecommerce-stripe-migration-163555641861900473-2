@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +9,25 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import Navbar from '../components/Navbar';
 import FooterSection from '../sections/FooterSection';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_xxxxxx');
+const STRIPE_PUBLIC_KEY = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+if (!STRIPE_PUBLIC_KEY) {
+  throw new Error("FATAL ERROR: VITE_STRIPE_PUBLIC_KEY is not configured in client .env file.");
+}
+const stripePromise = loadStripe(STRIPE_PUBLIC_KEY);
+
+const API_URL = import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  throw new Error("FATAL ERROR: VITE_API_URL is not configured in client .env file.");
+}
+
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+  gstRate: number;
+}
 
 const checkoutSchema = z.object({
   customerName: z.string().min(2, 'Name is required'),
@@ -97,13 +114,12 @@ const CheckoutPage = () => {
       setIsProcessing(true);
       setError(null);
 
-      const items = cart.map((item: any) => ({
+      const items = cart.map((item: CartItem) => ({
         productId: item.id,
         quantity: item.quantity
       }));
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/orders`, {
+      const response = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...data, items }),
@@ -111,7 +127,7 @@ const CheckoutPage = () => {
 
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok) { 
         throw new Error(result.error || 'Failed to create order');
       }
 
@@ -127,7 +143,7 @@ const CheckoutPage = () => {
   // Calculate GST breakdown exactly mirroring backend calculations
   let subtotalCalc = 0;
   let totalGstDisplay = 0;
-  cart.forEach((item: any) => {
+  cart.forEach((item: CartItem) => {
     const sub = Number((item.price * item.quantity).toFixed(2));
     const gst = Number(((sub * item.gstRate) / 100).toFixed(2));
     subtotalCalc += sub;
@@ -243,7 +259,7 @@ const CheckoutPage = () => {
               <h2 className="text-2xl font-bold mb-6">Order Summary</h2>
 
               <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto pr-2">
-                {cart.map((item: any) => (
+                {cart.map((item: CartItem) => (
                   <div key={item.id} className="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
                     <div className="flex items-center gap-3">
                       <div className="relative">

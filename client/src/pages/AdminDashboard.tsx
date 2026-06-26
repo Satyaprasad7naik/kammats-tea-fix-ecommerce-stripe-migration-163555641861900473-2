@@ -1,21 +1,34 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_URL = import.meta.env.VITE_API_URL;
+if (!API_URL) {
+  throw new Error("FATAL ERROR: VITE_API_URL is not configured in client .env file.");
+}
+
+interface Order {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  customerName: string;
+  orderStatus: 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  grandTotal: number;
+}
 
 const AdminDashboard = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        const res = await fetch(`${apiUrl}/api/admin/me`, {credentials: 'include'});
+        const res = await fetch(`${API_URL}/api/admin/me`, {credentials: 'include'});
         if (res.ok) {
           setIsAuthenticated(true);
           fetchOrders();
@@ -27,13 +40,12 @@ const AdminDashboard = () => {
     checkAuth();
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${apiUrl}/api/admin/login`, {
+      const res = await fetch(`${API_URL}/api/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -46,16 +58,15 @@ const AdminDashboard = () => {
 
       setIsAuthenticated(true);
       fetchOrders();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     }
   };
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${apiUrl}/api/admin/orders`, {
+      const res = await fetch(`${API_URL}/api/admin/orders`, {
         credentials: 'include',
       });
       const data = await res.json();
@@ -74,8 +85,7 @@ const AdminDashboard = () => {
 
   const handleLogout = async () => {
     try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-        await fetch(`${apiUrl}/api/admin/logout`, { method: 'POST', credentials: 'include' });
+        await fetch(`${API_URL}/api/admin/logout`, { method: 'POST', credentials: 'include' });
     } catch(e) {
         console.error(e);
     }
@@ -187,7 +197,7 @@ const AdminDashboard = () => {
                         <td className="p-4 text-center">
                           {order.paymentStatus === 'PAID' ? (
                             <a
-                              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/orders/${order.id}/invoice`}
+                              href={`${API_URL}/api/orders/${order.id}/invoice`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-800 font-bold text-sm"
