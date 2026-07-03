@@ -3,7 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import productsRouter from './routes/products';
 import ordersRouter from './routes/orders';
-import webhooksRouter from './routes/webhooks';
 import adminRouter from './routes/admin';
 import cookieParser from 'cookie-parser';
 
@@ -18,9 +17,6 @@ app.use(cors({
 }));
 
 app.use(cookieParser());
-
-// Webhooks must be parsed as raw bytes before express.json() for Razorpay signature verification
-app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRouter);
 
 app.use(express.json());
 

@@ -1,10 +1,12 @@
 import PDFDocument from 'pdfkit';
 import { Response } from 'express';
+import QRCode from 'qrcode';
 
-export const generateInvoicePDF = (order: any, res: Response) => {
+export const generateInvoicePDF = async (order: any, res: Response, type: 'CUSTOMER' | 'INTERNAL' = 'CUSTOMER') => {
   const doc = new PDFDocument({ margin: 50 });
 
-  res.setHeader('Content-disposition', `attachment; filename=invoice-${order.invoiceNumber || order.orderNumber}.pdf`);
+  const fileName = type === 'INTERNAL' ? order.internalInvoiceNumber : order.invoiceNumber;
+  res.setHeader('Content-disposition', `attachment; filename=invoice-${fileName || order.orderNumber}.pdf`);
   res.setHeader('Content-type', 'application/pdf');
 
   doc.pipe(res);
@@ -19,15 +21,16 @@ export const generateInvoicePDF = (order: any, res: Response) => {
   doc.text(`GSTIN: ${businessGstin}`, { align: 'center' });
   doc.moveDown();
 
-  doc.fontSize(16).font('Helvetica-Bold').text('TAX INVOICE', { align: 'center' });
+  doc.fontSize(16).font('Helvetica-Bold').text(type === 'INTERNAL' ? 'INTERNAL INVOICE' : 'TAX INVOICE', { align: 'center' });
   doc.moveDown();
 
   // Order Details
   doc.fontSize(10).font('Helvetica');
-  doc.text(`Invoice No: ${order.invoiceNumber || 'N/A'}`);
+  doc.text(`Invoice No: ${fileName || 'N/A'}`);
   doc.text(`Order No: ${order.orderNumber}`);
   doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`);
   doc.text(`Payment Status: ${order.paymentStatus}`);
+  doc.text(`Business Type: ${order.businessType}`);
   doc.moveDown();
 
   // Customer Details
@@ -43,7 +46,6 @@ export const generateInvoicePDF = (order: any, res: Response) => {
   const tableTop = doc.y;
   doc.font('Helvetica-Bold');
   doc.text('Item', 50, tableTop);
-  doc.text('HSN', 200, tableTop);
   doc.text('Qty', 260, tableTop);
   doc.text('Price', 300, tableTop);
   doc.text('GST %', 360, tableTop);
@@ -58,18 +60,23 @@ export const generateInvoicePDF = (order: any, res: Response) => {
   let y = doc.y + 5;
   doc.font('Helvetica');
 
+  let totalCost = 0;
+
   order.items.forEach((item: any) => {
     const cgstAmount = item.gstAmount / 2;
     const sgstAmount = item.gstAmount / 2;
 
     doc.text(item.productName.substring(0, 20), 50, y);
-    doc.text(item.hsnCode || 'N/A', 200, y);
     doc.text(item.quantity.toString(), 260, y);
     doc.text(`Rs. ${item.unitPrice.toFixed(2)}`, 300, y);
     doc.text(`${item.gstRate}%`, 360, y);
     doc.text(cgstAmount.toFixed(2), 410, y);
     doc.text(sgstAmount.toFixed(2), 460, y);
     doc.text(`Rs. ${item.lineTotal.toFixed(2)}`, 510, y);
+
+    if (type === 'INTERNAL' && item.product && item.product.costPrice) {
+        totalCost += (item.product.costPrice * item.quantity);
+    }
 
     y += 20;
   });
@@ -90,6 +97,41 @@ export const generateInvoicePDF = (order: any, res: Response) => {
   doc.fontSize(12);
   doc.text('Grand Total:', 400, y);
   doc.text(`Rs. ${order.grandTotal.toFixed(2)}`, 510, y);
+  doc.fontSize(10);
+
+  y += 40;
+
+  if (type === 'CUSTOMER') {
+      try {
+          const upiId = process.env.BUSINESS_UPI_ID || 'spylt@upi';
+          const upiName = process.env.BUSINESS_NAME || 'SPYLT Beverages';
+          const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${order.grandTotal}&cu=INR&tn=${encodeURIComponent('Order ' + order.orderNumber)}`;
+          const qrCodeDataUrl = await QRCode.toDataURL(upiUri);
+          const base64Data = qrCodeDataUrl.split(',')[1];
+          if (base64Data) {
+              const qrCodeImage = Buffer.from(base64Data, 'base64');
+              doc.text('Scan to Pay via UPI', 50, y);
+              doc.image(qrCodeImage, 50, y + 15, { width: 100 });
+          }
+      } catch (err) {
+          console.error('QR code generation failed', err);
+      }
+
+      doc.text('Terms & Conditions:', 300, y);
+      doc.font('Helvetica').text('1. No refunds on processed orders.', 300, y + 15);
+      doc.text('2. Please keep this invoice for reference.', 300, y + 30);
+  } else {
+      doc.font('Helvetica-Bold').text('INTERNAL SUMMARY', 50, y);
+      y += 20;
+      doc.font('Helvetica').text(`Order Notes: ${order.notes || 'None'}`, 50, y);
+      y += 15;
+      if (totalCost > 0) {
+          doc.text(`Estimated Cost: Rs. ${totalCost.toFixed(2)}`, 50, y);
+          y += 15;
+          const margin = order.subtotal - totalCost;
+          doc.text(`Estimated Margin: Rs. ${margin.toFixed(2)}`, 50, y);
+      }
+  }
 
   doc.end();
 };

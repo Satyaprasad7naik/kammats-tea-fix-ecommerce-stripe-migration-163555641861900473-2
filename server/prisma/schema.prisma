@@ -14,6 +14,7 @@ model Product {
   description      String?
   shortDescription String?
   price            Float
+  costPrice        Float    @default(0.0)
   gstRate          Float    @default(18.0)
   hsnCode          String?
   stock            Int      @default(0)
@@ -24,35 +25,39 @@ model Product {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  orderItems       OrderItem[]
+  orderItems OrderItem[]
 }
 
 model Order {
-  id                 String   @id @default(uuid())
-  orderNumber        String   @unique
-  customerName       String
-  phone              String
-  email              String?
-  address            String
-  city               String
-  state              String
-  pincode            String
-  subtotal           Float
-  gstTotal           Float
-  grandTotal         Float
-  paymentStatus      String   @default("PENDING") // PENDING, PAID, FAILED
-  orderStatus        String   @default("PROCESSING") // PROCESSING, SHIPPED, DELIVERED, CANCELLED
-  stripeSessionId    String?  @unique
-  stripePaymentIntentId String? @unique
-  invoiceNumber      String?  @unique
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  orderNumber           String   @unique
+  customerName          String
+  phone                 String
+  email                 String?
+  address               String
+  city                  String
+  state                 String
+  pincode               String
+  subtotal              Float
+  gstTotal              Float
+  grandTotal            Float
+  paymentStatus         String   @default("PENDING") // PENDING, PAID, FAILED
+  orderStatus           String   @default("PROCESSING") // PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  invoiceNumber         String?  @unique
+  internalInvoiceNumber String?  @unique
+  businessType          String   @default("B2C") // B2B, B2C
+  notes                 String?
+  internalNotes         String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  items              OrderItem[]
+  items          OrderItem[]
+  auditLogs      AuditLog[]
+  communications Communication[]
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   orderId     String
   productId   String
   productName String
@@ -63,8 +68,8 @@ model OrderItem {
   gstAmount   Float
   lineTotal   Float
 
-  order       Order    @relation(fields: [orderId], references: [id])
-  product     Product  @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 }
 
 model Admin {
@@ -73,4 +78,27 @@ model Admin {
   password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  orderId   String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model Communication {
+  id        String   @id @default(uuid())
+  orderId   String
+  type      String // EMAIL, WHATSAPP, SMS
+  recipient String
+  status    String   @default("PENDING") // PENDING, SENT, FAILED
+  message   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
 }

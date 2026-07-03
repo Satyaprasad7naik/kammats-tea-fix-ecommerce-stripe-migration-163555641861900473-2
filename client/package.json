@@ -13,11 +13,10 @@
   "dependencies": {
     "@gsap/react": "^2.1.2",
     "@hookform/resolvers": "^5.4.0",
-    "@stripe/react-stripe-js": "^6.6.0",
-    "@stripe/stripe-js": "^3.5.0",
     "@tailwindcss/vite": "^4.1.13",
     "gsap": "^3.13.0",
     "lottie-react": "^2.4.1",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-hook-form": "^7.80.0",
