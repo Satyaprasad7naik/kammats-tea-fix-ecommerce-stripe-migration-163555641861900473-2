@@ -1,0 +1,148 @@
+import nodemailer from 'nodemailer';
+import { PrismaClient } from '@prisma/client';
+import { generateInvoicePDFBuffer } from '../utils/invoice';
+
+const prisma = new PrismaClient();
+
+export type CommunicationErrorReason = 'NETWORK_ERROR' | 'PROVIDER_ERROR' | 'AUTHENTICATION_ERROR' | 'TIMEOUT' | 'UNKNOWN_ERROR';
+
+export const sendOrderEmail = async (order: any) => {
+  try {
+    if (!order.email) return false;
+
+    let transporter;
+    if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
+        transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT),
+          secure: Number(process.env.SMTP_PORT) === 465,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+    } else {
+        const testAccount = await nodemailer.createTestAccount();
+        transporter = nodemailer.createTransport({
+            host: "smtp.ethereal.email",
+            port: 587,
+            secure: false,
+            auth: {
+                user: testAccount.user,
+                pass: testAccount.pass,
+            },
+        });
+    }
+
+    const pdfBuffer = await generateInvoicePDFBuffer(order, 'CUSTOMER');
+
+    const mailOptions = {
+      from: `"SPYLT" <${process.env.SMTP_FROM || 'orders@spylt.com'}>`,
+      to: order.email,
+      subject: `Order Confirmation - ${order.orderNumber}`,
+      text: `Hello ${order.customerName},\n\nThank you for your order! Please find your invoice attached.\n\nOrder Total: Rs. ${order.grandTotal}\nPayment Status: ${order.paymentStatus}\n\nBest,\nSPYLT Team`,
+      attachments: [
+        {
+          filename: `invoice-${order.invoiceNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Email sent: ${info.messageId}`);
+    return true;
+  } catch (error: any) {
+    let reason: CommunicationErrorReason = 'UNKNOWN_ERROR';
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') reason = 'NETWORK_ERROR';
+    else if (error.responseCode >= 500) reason = 'PROVIDER_ERROR';
+    else if (error.responseCode >= 400 && error.responseCode < 500) reason = 'AUTHENTICATION_ERROR';
+
+    // Log the full stack trace for internal debugging but throw only the sanitized enum reason
+    console.error('Failed to send order email. Raw Error:', error);
+    throw new Error(reason);
+  }
+};
+
+export const sendWhatsAppMessage = async (order: any) => {
+  try {
+    if (!order.phone) return false;
+
+    // In a real integration, replace this with actual API call
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    if (process.env.NODE_ENV === "development" && Math.random() < 0.05) {
+        throw new Error("TIMEOUT");
+    }
+
+    console.log(`[SIMULATED] WhatsApp sent to ${order.phone} for order ${order.orderNumber}`);
+    return true;
+  } catch (error: any) {
+    let reason: CommunicationErrorReason = 'UNKNOWN_ERROR';
+    if (error.message === 'TIMEOUT') reason = 'TIMEOUT';
+    else if (error.message.includes('Auth')) reason = 'AUTHENTICATION_ERROR';
+    else if (error.message.includes('Network')) reason = 'NETWORK_ERROR';
+
+    // Log the full stack trace for internal debugging but throw only the sanitized enum reason
+    console.error('Failed to send WhatsApp message. Raw Error:', error);
+    throw new Error(reason);
+  }
+};
+
+export const startCommunicationRetryJob = () => {
+    console.log("Communication retry background job started.");
+
+    // Check every 5 minutes
+    setInterval(async () => {
+        try {
+            const failedCommunications = await prisma.communication.findMany({
+                where: {
+                    status: {
+                        in: ['PENDING', 'FAILED']
+                    },
+                    attempts: {
+                        lt: 3 // Retry up to 3 times (Dead letter queue equivalent)
+                    }
+                },
+                include: { order: { include: { items: true } } }
+            });
+
+            for (const comm of failedCommunications) {
+                let success = false;
+                let failureReason = null;
+
+                try {
+                    if (comm.type === 'EMAIL') {
+                        success = await sendOrderEmail(comm.order);
+                    } else if (comm.type === 'WHATSAPP') {
+                        success = await sendWhatsAppMessage(comm.order);
+                    }
+                } catch(e: any) {
+                    success = false;
+                    failureReason = e.message || 'UNKNOWN_ERROR';
+                }
+
+                const newAttempts = comm.attempts + 1;
+
+                await prisma.communication.update({
+                    where: { id: comm.id },
+                    data: {
+                        status: success ? 'SENT' : (newAttempts >= 3 ? 'DEAD_LETTER' : 'FAILED'),
+                        attempts: newAttempts,
+                        failureReason: success ? null : failureReason,
+                        updatedAt: new Date()
+                    }
+                });
+
+                if (success) {
+                    console.log(`Successfully retried ${comm.type} for Order ${comm.order.orderNumber}`);
+                } else if (newAttempts >= 3) {
+                    console.log(`Communication ${comm.id} marked as DEAD_LETTER after 3 failed attempts.`);
+                }
+            }
+        } catch (err) {
+            console.error('Communication retry job error:', err);
+        }
+    }, 5 * 60 * 1000);
+};

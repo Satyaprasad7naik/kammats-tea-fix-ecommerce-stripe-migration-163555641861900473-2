@@ -1,16 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Navbar from '../components/Navbar';
 import FooterSection from '../sections/FooterSection';
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_xxxxxx');
 
 const checkoutSchema = z.object({
   customerName: z.string().min(2, 'Name is required'),
@@ -19,103 +15,62 @@ const checkoutSchema = z.object({
   address: z.string().min(5, 'Address is required'),
   city: z.string().min(2, 'City is required'),
   state: z.string().min(2, 'State is required'),
-  pincode: z.string().regex(/^[0-9]{6}$/, 'Invalid pincode (6 digits required)'),
+  pincode: z.string().regex(/^[0-9]{6}$/, 'Invalid pincode'),
+  businessType: z.enum(['B2C', 'B2B']),
+  notes: z.string().optional()
 });
 
 type CheckoutForm = z.infer<typeof checkoutSchema>;
 
-const CheckoutFormInternal = ({ onPaymentSuccess, onPaymentError }: { onPaymentSuccess: () => void, onPaymentError: (err: string) => void }) => {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-
-    setIsProcessing(true);
-
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/checkout/success`,
-      },
-    });
-
-    if (error) {
-      onPaymentError(error.message || 'Payment failed');
-    } else {
-      onPaymentSuccess();
-    }
-
-    setIsProcessing(false);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-      <PaymentElement />
-      <button
-        type="submit"
-        disabled={!stripe || isProcessing}
-        className={`w-full py-4 bg-[#d89945] text-white font-black rounded-xl hover:bg-[#3e2a21] transition-colors uppercase tracking-widest text-lg shadow-lg ${isProcessing || !stripe ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-0.5 transform'}`}
-      >
-        {isProcessing ? (
-          <span className="flex items-center justify-center gap-2">
-            <i className="ri-loader-4-line animate-spin"></i> Processing...
-          </span>
-        ) : (
-          'Pay Now'
-        )}
-      </button>
-    </form>
-  );
-}
-
 const CheckoutPage = () => {
-  const { cart } = useCart();
+  const { cart, clearCart } = useCart();
   const navigate = useNavigate();
-  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<CheckoutForm>({
+  const { register, handleSubmit, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
+    defaultValues: {
+        businessType: 'B2C'
+    }
   });
 
-  useEffect(() => {
-    if (cart.length === 0 && !clientSecret) {
-      navigate('/shop');
-    }
-  }, [cart, navigate, clientSecret]);
-
   const onSubmit = async (data: CheckoutForm) => {
-    try {
-      setIsProcessing(true);
-      setError(null);
+    if (cart.length === 0) {
+      setError('Your cart is empty');
+      return;
+    }
 
+    setIsProcessing(true);
+    setError(null);
+
+    try {
       const items = cart.map((item: any) => ({
         productId: item.id,
-        quantity: item.quantity
+        quantity: item.quantity,
       }));
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/orders`, {
+
+      const res = await fetch(`${apiUrl}/api/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, items }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          items,
+        }),
       });
 
-      const result = await response.json();
+      const result = await res.json();
 
-      if (!response.ok) {
+      if (!res.ok) {
         throw new Error(result.error || 'Failed to create order');
       }
 
-      setClientSecret(result.clientSecret);
+      clearCart();
+      navigate(`/checkout/success?orderId=${result.order.id}&upiUri=${encodeURIComponent(result.upiUri)}`);
 
     } catch (err: any) {
       setError(err.message || 'Checkout failed');
@@ -156,6 +111,22 @@ const CheckoutPage = () => {
             <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xl">
               <h2 className="text-2xl font-bold mb-6">Delivery Details</h2>
               <form id="checkout-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Order Type *</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" value="B2C" {...register('businessType')} className="text-[#d89945] focus:ring-[#d89945] w-4 h-4" />
+                      <span>Standard (B2C)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" value="B2B" {...register('businessType')} className="text-[#d89945] focus:ring-[#d89945] w-4 h-4" />
+                      <span>Business (B2B)</span>
+                    </label>
+                  </div>
+                  {errors.businessType && <p className="text-red-500 text-xs mt-1">{errors.businessType.message}</p>}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Full Name *</label>
@@ -233,6 +204,16 @@ const CheckoutPage = () => {
                     {errors.pincode && <p className="text-red-500 text-xs mt-1">{errors.pincode.message}</p>}
                   </div>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Order Notes (Optional)</label>
+                  <textarea
+                    {...register('notes')}
+                    className={`w-full px-4 py-3 rounded-xl border ${errors.notes ? 'border-red-500' : 'border-gray-300'} focus:outline-none focus:ring-2 focus:ring-[#d89945]`}
+                    placeholder="Any special instructions?"
+                    rows={2}
+                  />
+                </div>
               </form>
             </div>
           </div>
@@ -277,33 +258,20 @@ const CheckoutPage = () => {
                 </div>
               </div>
 
-              {!clientSecret ? (
-                  <button
-                    type="submit"
-                    form="checkout-form"
-                    disabled={isProcessing}
-                    className={`w-full mt-8 py-4 bg-[#d89945] text-white font-black rounded-xl hover:bg-[#3e2a21] transition-colors uppercase tracking-widest text-lg shadow-lg ${isProcessing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-0.5 transform'}`}
-                  >
-                    {isProcessing ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <i className="ri-loader-4-line animate-spin"></i> Processing...
-                      </span>
-                    ) : (
-                      'Continue to Payment'
-                    )}
-                  </button>
-              ) : (
-                  <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
-                      <CheckoutFormInternal
-                        onPaymentSuccess={() => {}}
-                        onPaymentError={(err) => setError(err)}
-                      />
-                  </Elements>
-              )}
-
-              <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-xs">
-                <i className="ri-lock-2-line"></i> Secured by Stripe
-              </div>
+              <button
+                type="submit"
+                form="checkout-form"
+                disabled={isProcessing}
+                className={`w-full mt-8 py-4 bg-[#d89945] text-white font-black rounded-xl hover:bg-[#3e2a21] transition-colors uppercase tracking-widest text-lg shadow-lg ${isProcessing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-0.5 transform'}`}
+              >
+                {isProcessing ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <i className="ri-loader-4-line animate-spin"></i> Processing...
+                  </span>
+                ) : (
+                  'Place Order'
+                )}
+              </button>
             </div>
           </div>
         </div>

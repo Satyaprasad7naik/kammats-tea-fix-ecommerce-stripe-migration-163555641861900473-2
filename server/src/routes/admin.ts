@@ -65,7 +65,10 @@ router.post('/logout', (req, res) => {
 // Check auth status
 router.get('/me', (req, res) => {
   const token = req.cookies.admin_token;
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -75,21 +78,88 @@ router.get('/me', (req, res) => {
   }
 });
 
-// Get all orders (Protected)
-router.get('/orders', async (req, res) => {
-  try {
+// Middleware for protected routes
+const authenticateAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const token = req.cookies.admin_token;
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      return res.status(401).json({ error: 'Invalid token' });
+    if (!token) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
     }
 
+    try {
+        jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+// Dashboard Stats
+router.get('/dashboard-stats', authenticateAdmin, async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const orders = await prisma.order.findMany();
+
+        const todaysOrders = orders.filter((o: any) => new Date(o.createdAt) >= today);
+        const todaysRevenue = todaysOrders.reduce((sum: number, o: any) => sum + o.grandTotal, 0);
+
+        const b2bOrders = orders.filter((o: any) => o.businessType === 'B2B').length;
+        const b2cOrders = orders.filter((o: any) => o.businessType === 'B2C').length;
+
+        const pendingOrders = orders.filter((o: any) => o.orderStatus === 'PROCESSING').length;
+        const completedOrders = orders.filter((o: any) => o.orderStatus === 'DELIVERED').length;
+
+        const lowStockProducts = await prisma.product.findMany({
+            where: { stock: { lte: 10 } },
+            select: { id: true, name: true, stock: true }
+        });
+
+        res.json({
+            todaysRevenue,
+            todaysOrdersCount: todaysOrders.length,
+            b2bOrders,
+            b2cOrders,
+            pendingOrders,
+            completedOrders,
+            lowStockProducts
+        });
+    } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+});
+
+// Update Product Stock
+router.put('/products/:id/stock', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { stock } = req.body;
+
+        if (typeof stock !== 'number' || stock < 0) {
+            res.status(400).json({ error: 'Invalid stock value' });
+            return;
+        }
+
+        const product = await prisma.product.update({
+            where: { id: id as string },
+            data: { stock }
+        });
+
+        res.json(product);
+    } catch (error) {
+        console.error('Error updating stock:', error);
+        res.status(500).json({ error: 'Failed to update stock' });
+    }
+});
+
+// Get all orders (Protected)
+router.get('/orders', authenticateAdmin, async (req, res) => {
+  try {
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { items: true }
+      include: { items: true, communications: true }
     });
 
     res.json(orders);
@@ -99,4 +169,194 @@ router.get('/orders', async (req, res) => {
   }
 });
 
+// Product CRUD endpoints
+
+router.get('/products', authenticateAdmin, async (req, res) => {
+    try {
+        const products = await prisma.product.findMany({ orderBy: { createdAt: 'desc' }});
+        res.json(products);
+    } catch (error) {
+        console.error('Error fetching products:', error);
+        res.status(500).json({ error: 'Failed to fetch products' });
+    }
+});
+
+router.post('/products', authenticateAdmin, async (req, res) => {
+    try {
+        const product = await prisma.product.create({
+            data: req.body
+        });
+        res.status(201).json(product);
+    } catch (error) {
+        console.error('Error creating product:', error);
+        res.status(500).json({ error: 'Failed to create product' });
+    }
+});
+
+router.put('/products/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const product = await prisma.product.update({
+            where: { id: id as string },
+            data: req.body
+        });
+        res.json(product);
+    } catch (error) {
+        console.error('Error updating product:', error);
+        res.status(500).json({ error: 'Failed to update product' });
+    }
+});
+
+router.delete('/products/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.product.delete({
+            where: { id: id as string }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        res.status(500).json({ error: 'Failed to delete product' });
+    }
+});
+
+// Update Order Status
+router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { orderStatus, paymentStatus } = req.body;
+
+        const existingOrder = await prisma.order.findUnique({ where: { id: id as string } });
+        if (!existingOrder) {
+            res.status(404).json({ error: 'Order not found' });
+            return;
+        }
+
+        const validTransitions: Record<string, string[]> = {
+            'DRAFT': ['SUBMITTED', 'CANCELLED'],
+            'SUBMITTED': ['AWAITING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'REJECTED'],
+            'AWAITING_PAYMENT': ['PAYMENT_VERIFIED', 'EXPIRED', 'CANCELLED'],
+            'PAYMENT_VERIFIED': ['CONFIRMED', 'CANCELLED'],
+            'CONFIRMED': ['PREPARING', 'CANCELLED'],
+            'PREPARING': ['PACKED', 'CANCELLED'],
+            'PACKED': ['READY', 'CANCELLED'],
+            'READY': ['OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'],
+            'OUT_FOR_DELIVERY': ['DELIVERED', 'CANCELLED'],
+            'DELIVERED': ['COMPLETED'],
+            'COMPLETED': [], // Terminal state
+            'CANCELLED': [], // Terminal state
+            'REJECTED': [], // Terminal state
+            'EXPIRED': [] // Terminal state
+        };
+
+        if (orderStatus && existingOrder.orderStatus !== orderStatus) {
+            const allowedNextStates = validTransitions[existingOrder.orderStatus] || [];
+            if (!allowedNextStates.includes(orderStatus)) {
+                res.status(400).json({ error: `Invalid state transition from ${existingOrder.orderStatus} to ${orderStatus}` });
+                return;
+            }
+        }
+
+        const dataToUpdate: any = {};
+        if (orderStatus) dataToUpdate.orderStatus = orderStatus;
+        if (paymentStatus) dataToUpdate.paymentStatus = paymentStatus;
+
+        const order = await prisma.order.update({
+            where: { id: id as string },
+            data: dataToUpdate
+        });
+
+        // Log the status change
+        await prisma.auditLog.create({
+            data: {
+                orderId: id as string,
+                action: 'STATUS_UPDATE',
+                details: `Status updated to ${orderStatus || 'UNCHANGED'}, Payment: ${paymentStatus || 'UNCHANGED'}`
+            }
+        });
+
+        res.json(order);
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        res.status(500).json({ error: 'Failed to update order status' });
+    }
+});
+
 export default router;
+
+// Analytics
+router.get('/analytics', authenticateAdmin, async (req, res) => {
+    try {
+        const orders = await prisma.order.findMany();
+
+        const totalRevenue = orders.reduce((sum: number, o: any) => sum + o.grandTotal, 0);
+        const totalGST = orders.reduce((sum: number, o: any) => sum + o.gstTotal, 0);
+
+        const orderDates = orders.map((o: any) => new Date(o.createdAt).setHours(0,0,0,0));
+        const uniqueDays = new Set(orderDates).size || 1;
+
+        const dailyAvg = totalRevenue / uniqueDays;
+
+        const topProducts = await prisma.orderItem.groupBy({
+            by: ['productId', 'productName'],
+            _sum: {
+                quantity: true,
+                lineTotal: true
+            },
+            orderBy: {
+                _sum: {
+                    quantity: 'desc'
+                }
+            },
+            take: 5
+        });
+
+        res.json({
+            totalRevenue,
+            totalGST,
+            dailyAvg,
+            topProducts
+        });
+    } catch (error) {
+        console.error('Error fetching analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch analytics' });
+    }
+});
+
+
+import os from 'os';
+
+// System Health Monitoring
+router.get('/system-health', authenticateAdmin, async (req, res) => {
+    try {
+        const unsyncedSheetsCount = await prisma.order.count({
+            where: { googleSheetsSynced: false }
+        });
+
+        const deadLetterCount = await prisma.communication.count({
+            where: { status: 'DEAD_LETTER' }
+        });
+
+        const failedCommunicationsCount = await prisma.communication.count({
+            where: { status: 'FAILED' }
+        });
+
+        const pendingOrdersCount = await prisma.order.count({
+            where: { orderStatus: 'SUBMITTED' }
+        });
+
+        res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            metrics: {
+                unsyncedSheetsCount,
+                deadLetterCount,
+                failedCommunicationsCount,
+                pendingOrdersCount
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching system health:', error);
+        res.status(500).json({ error: 'Failed to fetch system health' });
+    }
+});

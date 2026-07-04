@@ -1,76 +1,77 @@
-# 🥛 SpyltMilk Clone
+# 🍵 Spylt Business OS
 
-A **modern frontend clone** of the [Awwwards SOTD-winning website Spylt.com](https://www.spylt.com/) — originally designed by Tubik Studio.  
-Built to demonstrate my skills in **React**, **Tailwind CSS**, and **GSAP animation**, focusing on fluid scroll effects, interactive UI, and responsive design.
+A comprehensive, production-ready **Tea Business Operating System** tailored for Spylt.com. Evolving from a traditional e-commerce prototype, this platform digitizes and automates the entire order lifecycle, business communication, invoicing, inventory management, customer relationships, analytics, and daily operations.
 
-🌐 **Live Preview:** [https://spylt-clone-pi.vercel.app/](https://spylt-clone-pi.vercel.app/)
+## 🚀 Architecture Overview
+
+This project is built around **Business Operations**, utilizing a state-machine driven order engine instead of relying on legacy payment gateways.
+
+- **Frontend:** React, TypeScript, Tailwind CSS, GSAP (Unchanged UI experience).
+- **Backend:** Node.js, Express, TypeScript.
+- **Primary Database:** PostgreSQL via Prisma ORM (The sole source of truth).
+- **Reporting Mirror:** Google Sheets (Synchronized asynchronously via API).
+- **Communication Engine:** Automated Nodemailer (Invoices) and simulated WhatsApp triggers.
+- **Invoicing:** Dynamic PDF generation (Customer and Internal variants).
+- **Payment Method:** UPI Deep Linking & QR Generation (Zero Gateway Dependency).
+
+## ✨ Core Features
+
+1.  **State Machine Order Flow:** Orders traverse through controlled states (e.g., `SUBMITTED`, `PREPARING`, `DELIVERED`, `COMPLETED`).
+2.  **Dual Invoice System:** Customers receive a clean, UPI-enabled tax invoice. Staff receive an internal invoice detailing calculated cost margins and business types (B2B/B2C).
+3.  **Communication Engine:** Asynchronous messaging to notify clients via Email (w/ PDF) and WhatsApp. Includes a 5-minute background retry job for failed dispatches.
+4.  **Admin Command Center:** JWT-protected dashboard featuring Revenue Analytics, Inventory Management (+10 stock adjustments), Order State modifications, and Low Stock Alerts.
+5.  **Observability & Security:** Helmet headers, express-rate-limiting, structured JSON logging with UUID Request IDs, and a robust `/api/health` diagnostics endpoint.
+
+## ⚙️ Environment Variables
+
+Create a `.env` file in the `/server` directory:
+
+# PostgreSQL Database URL
+DATABASE_URL="postgresql://user:password@localhost:5432/spylt"
+
+# Authentication
+JWT_SECRET="super_secret_jwt_key_here"
+
+# Business Details
+BUSINESS_NAME="SPYLT Beverages"
+BUSINESS_GSTIN="27XXXXX1234X1XZ"
+BUSINESS_ADDRESS="123 Main Street, Mumbai"
+BUSINESS_UPI_ID="spylt@upi"
+
+# Email Configuration (Nodemailer)
+SMTP_HOST="smtp.yourprovider.com"
+SMTP_PORT=587
+SMTP_USER="your-email@spylt.com"
+SMTP_PASS="your-password"
+SMTP_FROM="orders@spylt.com"
+
+# Google Sheets Reporting (Optional)
+GOOGLE_SHEETS_SPREADSHEET_ID="your-sheet-id"
+GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+
+## 🛠️ Setup & Run Locally
+
+### 1. Database Initialization
+Ensure PostgreSQL is running.
+npm i && npx prisma generate && npx prisma db push
+
+### 2. Start the Backend
+Execute the index.ts directly.
+
+### 3. Start the Frontend
+Execute the vite script.
+
+## 📦 Deployment Guide
+
+1.  **Database:** Deploy PostgreSQL on a managed service (e.g., AWS RDS, Supabase, Vercel Postgres).
+2.  **Backend:** Deploy the Node.js Express app to Render, Heroku, or an EC2 instance. Ensure the `DATABASE_URL` and all `.env` secrets are securely stored.
+3.  **Frontend:** Deploy the Vite React app to Vercel or Netlify. Set `VITE_API_URL` to point to the production backend URL.
+4.  **Backups:** The application includes a daily cron job script (`server/src/utils/backup.ts`) ready to be hooked into `pg_dump` to AWS S3.
+
+## 📈 Future Expansions
+- Multi-branch inventory tracking.
+- Customer loyalty programs (CRM).
+- Direct delivery partner API integrations.
 
 ---
-
-## 📸 Project Preview
-![SpyltMilk Clone Screenshot](https://github.com/ShowravKormokar/SpyltMilk-clone/blob/main/client/src/assets/images/Final.png?raw=true)
-<img width="1267" height="792" alt="Macbook-Air-spylt-clone-pi vercel app" src="https://github.com/user-attachments/assets/c40add88-400d-434f-b63f-eb497d72e433" />
-
-
----
-
-## 🧠 About the Project
-This project is a **frontend clone** of [Spylt.com](https://www.spylt.com/), which won **Site of the Day (SOTD)** on [Awwwards.com](https://www.awwwards.com/).  
-I recreated it to sharpen my animation and modern web development skills — exploring **smooth transitions, scroll-based effects, and layout responsiveness**.
-
----
-
-## 🛠️ Technologies Used
-
-| Technology | Version | Description |
-|-------------|----------|-------------|
-| [React](https://react.dev/) | ^19.1.1 | Frontend library for UI components |
-| [React DOM](https://react.dev/reference/react-dom) | ^19.1.1 | DOM bindings for React |
-| [React Router DOM](https://reactrouter.com/) | ^7.9.3 | Client-side routing |
-| [React Responsive](https://github.com/contra/react-responsive) | ^10.0.1 | Responsive media queries in React |
-| [Tailwind CSS](https://tailwindcss.com/) | ^4.1.13 | Utility-first CSS framework |
-| [GSAP](https://greensock.com/gsap/) | ^3.13.0 | Animation library for scroll and transitions |
-| [@gsap/react](https://www.npmjs.com/package/@gsap/react) | ^2.1.2 | GSAP React integration plugin |
-| [Remix Icon](https://remixicon.com/) | ^4.6.0 | Modern icon library |
-| [Vite](https://vitejs.dev/) | ^7.1.7 | Next-generation frontend build tool |
-| [vite-plugin-mkcert](https://www.npmjs.com/package/vite-plugin-mkcert) | ^1.17.8 | Local HTTPS support |
-| [TypeScript](https://www.typescriptlang.org/) | ~5.8.3 | Type safety for the project |
-| [ESLint](https://eslint.org/) | ^9.36.0 | Code linting and best practices |
-
----
-
-## ⚙️ Setup & Run Locally
-
-### 1. Clone the repository
-```bash
-git clone https://github.com/ShowravKormokar/SpyltMilk-clone.git
-cd SpyltMilk-clone/client
-```
-
-### 2. Install dependencies
-```bash
-npm install
-```
-
-### 2. Install dependencies
-```bash
-npm install
-```
-
-### 3. Run development server
-```bash
-npm run dev
-```
-
-The app will run on https://localhost:5173 (with HTTPS if mkcert is configured).
-
-## 🚀 Deployment
-This project is continuously deployed on Vercel . Whenever changes are pushed to the main branch on GitHub, Vercel automatically rebuilds and redeploys the latest version.
-
-## ✨ Features
-🎬 Smooth GSAP scroll-based animations 📱 Fully responsive layout 🎨 Tailwind CSS for fast and clean styling ⚡ Built with Vite for blazing-fast performance 🔄 Continuous deployment via Vercel
-
-## 📄 License
-This project is for learning and showcase purposes only — not for commercial use. All original design credits go to Tubik Studio and Spylt.com
-
-## 👨‍💻 Developed by Showrav Kormokar
+*Developed as a high-grade production migration.*
