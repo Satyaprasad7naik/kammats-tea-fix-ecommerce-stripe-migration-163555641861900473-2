@@ -42,12 +42,13 @@ model Order {
   gstTotal              Float
   grandTotal            Float
   paymentStatus         String   @default("PENDING") // PENDING, PAID, FAILED
-  orderStatus           String   @default("PROCESSING") // PROCESSING, SHIPPED, DELIVERED, CANCELLED
+  orderStatus           String   @default("SUBMITTED")
   invoiceNumber         String?  @unique
   internalInvoiceNumber String?  @unique
   businessType          String   @default("B2C") // B2B, B2C
   notes                 String?
   internalNotes         String?
+  googleSheetsSynced    Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -91,14 +92,16 @@ model AuditLog {
 }
 
 model Communication {
-  id        String   @id @default(uuid())
-  orderId   String
-  type      String // EMAIL, WHATSAPP, SMS
-  recipient String
-  status    String   @default("PENDING") // PENDING, SENT, FAILED
-  message   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  orderId       String
+  type          String // EMAIL, WHATSAPP, SMS
+  recipient     String
+  status        String   @default("PENDING") // PENDING, SENT, FAILED
+  message       String?
+  attempts      Int      @default(0)
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   order Order @relation(fields: [orderId], references: [id])
 }

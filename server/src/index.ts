@@ -11,6 +11,7 @@ import os from 'os';
 import { requestLogger } from './middleware/logger';
 import { startBackupCron } from './utils/backup';
 import { startCommunicationRetryJob } from './services/communication';
+import { startGoogleSheetsRetryJob } from './services/googleSheets';
 import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
@@ -82,4 +83,5 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   startBackupCron();
   startCommunicationRetryJob();
+  startGoogleSheetsRetryJob();
 });

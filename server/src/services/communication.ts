@@ -79,6 +79,9 @@ export const startCommunicationRetryJob = () => {
                 where: {
                     status: {
                         in: ['PENDING', 'FAILED']
+                    },
+                    attempts: {
+                        lt: 3 // Retry up to 3 times (Dead letter queue equivalent)
                     }
                 },
                 include: { order: { include: { items: true } } }
@@ -86,22 +89,37 @@ export const startCommunicationRetryJob = () => {
 
             for (const comm of failedCommunications) {
                 let success = false;
-                if (comm.type === 'EMAIL') {
-                    success = await sendOrderEmail(comm.order);
-                } else if (comm.type === 'WHATSAPP') {
-                    success = await sendWhatsAppMessage(comm.order);
+                let failureReason = null;
+
+                try {
+                    if (comm.type === 'EMAIL') {
+                        success = await sendOrderEmail(comm.order);
+                        if (!success) failureReason = "SMTP connection or provider error";
+                    } else if (comm.type === 'WHATSAPP') {
+                        success = await sendWhatsAppMessage(comm.order);
+                        if (!success) failureReason = "WhatsApp provider API error";
+                    }
+                } catch(e: any) {
+                    success = false;
+                    failureReason = e.message || "Unknown error";
                 }
+
+                const newAttempts = comm.attempts + 1;
 
                 await prisma.communication.update({
                     where: { id: comm.id },
                     data: {
-                        status: success ? 'SENT' : 'FAILED',
+                        status: success ? 'SENT' : (newAttempts >= 3 ? 'DEAD_LETTER' : 'FAILED'),
+                        attempts: newAttempts,
+                        failureReason: success ? null : failureReason,
                         updatedAt: new Date()
                     }
                 });
 
                 if (success) {
                     console.log(`Successfully retried ${comm.type} for Order ${comm.order.orderNumber}`);
+                } else if (newAttempts >= 3) {
+                    console.log(`Communication ${comm.id} marked as DEAD_LETTER after 3 failed attempts.`);
                 }
             }
         } catch (err) {

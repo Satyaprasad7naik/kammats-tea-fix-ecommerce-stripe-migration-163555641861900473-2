@@ -8,7 +8,7 @@ const AdminDashboard = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'inventory' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'inventory'>('dashboard');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -76,13 +76,14 @@ const AdminDashboard = () => {
     setLoading(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const [ordersRes, statsRes, productsRes] = await Promise.all([
+      const [ordersRes, statsRes, productsRes, analyticsRes] = await Promise.all([
           fetch(`${apiUrl}/api/admin/orders`, {credentials: 'include'}),
           fetch(`${apiUrl}/api/admin/dashboard-stats`, {credentials: 'include'}),
-          fetch(`${apiUrl}/api/admin/products`, {credentials: 'include'})
+          fetch(`${apiUrl}/api/admin/products`, {credentials: 'include'}),
+          fetch(`${apiUrl}/api/admin/analytics`, {credentials: 'include'})
       ]);
 
-      if (!ordersRes.ok || !statsRes.ok || !productsRes.ok) {
+      if (!ordersRes.ok || !statsRes.ok || !productsRes.ok || !analyticsRes.ok) {
           if (ordersRes.status === 401) {
               setIsAuthenticated(false);
               return;
@@ -93,29 +94,18 @@ const AdminDashboard = () => {
       const ordersData = await ordersRes.json();
       const statsData = await statsRes.json();
       const productsData = await productsRes.json();
+      const analyticsData = await analyticsRes.json();
 
       setOrders(ordersData);
       setStats(statsData);
       setProducts(productsData);
+      setAnalytics(analyticsData);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
-
-  const fetchAnalytics = async () => {
-      try {
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-          const res = await fetch(`${apiUrl}/api/admin/analytics`, {credentials: 'include'});
-          if (res.ok) {
-              const data = await res.json();
-              setAnalytics(data);
-          }
-      } catch (err) {
-          console.error(err);
-      }
-  }
 
   const updateOrderStatus = async (id: string, orderStatus: string) => {
       try {
@@ -128,6 +118,9 @@ const AdminDashboard = () => {
           });
           if (res.ok) {
               fetchDashboardData();
+          } else {
+              const data = await res.json();
+              alert(data.error || 'Failed to update order status');
           }
       } catch (e) {
           console.error("Failed to update status", e);
@@ -150,12 +143,6 @@ const AdminDashboard = () => {
           console.error("Failed to update stock", e);
       }
   };
-
-  useEffect(() => {
-      if (activeTab === 'analytics' && !analytics) {
-          fetchAnalytics();
-      }
-  }, [activeTab]);
 
   if (!isAuthenticated) {
     return (
@@ -221,19 +208,13 @@ const AdminDashboard = () => {
                   onClick={() => setActiveTab('orders')}
                   className={`px-6 py-4 font-bold text-sm ${activeTab === 'orders' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
               >
-                  Orders
+                  Order Management
               </button>
               <button
                   onClick={() => setActiveTab('inventory')}
                   className={`px-6 py-4 font-bold text-sm ${activeTab === 'inventory' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
               >
                   Inventory
-              </button>
-              <button
-                  onClick={() => setActiveTab('analytics')}
-                  className={`px-6 py-4 font-bold text-sm ${activeTab === 'analytics' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
-              >
-                  Analytics
               </button>
           </div>
       </div>
@@ -246,14 +227,15 @@ const AdminDashboard = () => {
           </div>
         ) : (
           <>
-            {activeTab === 'dashboard' && stats && (
+            {activeTab === 'dashboard' && stats && analytics && (
                 <div className="space-y-6">
                     <div className="flex justify-between items-center">
-                       <h2 className="text-3xl font-bold text-gray-800 tracking-tight">Today's Overview</h2>
+                       <h2 className="text-3xl font-bold text-gray-800 tracking-tight">Business Snapshot</h2>
                        <button onClick={fetchDashboardData} className="text-gray-500 hover:text-[#d89945] transition-colors">
                           <i className="ri-refresh-line text-xl"></i>
                        </button>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
                            <p className="text-gray-500 text-sm font-bold mb-1">Today's Revenue</p>
@@ -264,32 +246,60 @@ const AdminDashboard = () => {
                            <h3 className="text-3xl font-black text-gray-800">{stats.todaysOrdersCount}</h3>
                        </div>
                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                           <p className="text-gray-500 text-sm font-bold mb-1">Business Split</p>
-                           <div className="flex gap-4 mt-1">
-                               <span className="text-sm font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded">B2B: {stats.b2bOrders}</span>
-                               <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">B2C: {stats.b2cOrders}</span>
-                           </div>
+                           <p className="text-gray-500 text-sm font-bold mb-1">Lifetime Revenue</p>
+                           <h3 className="text-3xl font-black text-gray-800">₹{analytics.totalRevenue?.toFixed(2) || '0.00'}</h3>
                        </div>
                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
-                           <p className="text-gray-500 text-sm font-bold mb-1">Pending Processing</p>
+                           <p className="text-gray-500 text-sm font-bold mb-1">Pending Orders</p>
                            <h3 className="text-3xl font-black text-red-500">{stats.pendingOrders}</h3>
                        </div>
                     </div>
 
-                    {stats?.lowStockProducts?.length > 0 && (
-                        <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
-                            <h4 className="text-red-700 font-bold mb-2 flex items-center gap-2">
-                                <i className="ri-alert-line"></i> Low Stock Alerts
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                                {stats.lowStockProducts.map((p: any) => (
-                                    <span key={p.id} className="bg-white px-3 py-1 rounded-full text-xs font-bold text-red-600 shadow-sm border border-red-100">
-                                        {p.name} (Stock: {p.stock})
-                                    </span>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                            <h3 className="text-lg font-bold mb-4 border-b pb-2">Recent Order Activity</h3>
+                            <div className="space-y-3">
+                                {orders.slice(0, 5).map(order => (
+                                    <div key={order.id} className="flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold text-sm">{order.customerName} <span className="text-[10px] text-gray-400 font-normal ml-2">{order.orderNumber}</span></p>
+                                            <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleDateString()} - <span className="font-bold text-[#d89945]">₹{order.grandTotal.toFixed(2)}</span></p>
+                                        </div>
+                                        <span className="text-xs font-bold px-2 py-1 bg-gray-100 rounded">{order.orderStatus}</span>
+                                    </div>
                                 ))}
                             </div>
                         </div>
-                    )}
+
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                                <h3 className="text-lg font-bold mb-4 border-b pb-2">Top Products</h3>
+                                <div className="space-y-3">
+                                    {analytics.topProducts?.map((item: any, idx: number) => (
+                                        <div key={item.productName} className="flex justify-between items-center">
+                                            <span className="font-bold text-sm text-gray-700">#{idx + 1} {item.productName}</span>
+                                            <span className="text-xs bg-gray-100 px-2 py-1 rounded font-bold">{item._sum.quantity} Sold</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {stats?.lowStockProducts?.length > 0 && (
+                                <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+                                    <h4 className="text-red-700 font-bold mb-2 flex items-center gap-2 text-sm">
+                                        <i className="ri-alert-line"></i> Low Stock Alerts
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {stats.lowStockProducts.map((p: any) => (
+                                            <span key={p.id} className="bg-white px-2 py-1 rounded text-xs font-bold text-red-600 border border-red-100">
+                                                {p.name}: {p.stock}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -348,7 +358,7 @@ const AdminDashboard = () => {
                             <td className="p-4">
                                <div className="flex gap-1 mb-2 justify-end">
                                     {order.communications?.map((comm: any) => (
-                                        <span key={comm.id} title={`${comm.type} - ${comm.status}`} className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${comm.status === 'SENT' ? 'bg-green-100 text-green-600' : comm.status === 'FAILED' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                                        <span key={comm.id} title={`${comm.type} - ${comm.status}`} className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${comm.status === 'SENT' ? 'bg-green-100 text-green-600' : comm.status === 'FAILED' ? 'bg-red-100 text-red-600' : comm.status === 'DEAD_LETTER' ? 'bg-gray-800 text-white' : 'bg-yellow-100 text-yellow-600'}`}>
                                             <i className={comm.type === 'EMAIL' ? 'ri-mail-line' : 'ri-whatsapp-line'}></i>
                                         </span>
                                     ))}
@@ -437,42 +447,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {activeTab === 'analytics' && analytics && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="text-lg font-bold mb-4">Revenue Breakdown</h3>
-                        <div className="space-y-4">
-                            <div className="flex justify-between border-b pb-2">
-                                <span className="text-gray-600">Daily Average</span>
-                                <span className="font-bold">₹{analytics.dailyAvg?.toFixed(2) || '0.00'}</span>
-                            </div>
-                            <div className="flex justify-between border-b pb-2">
-                                <span className="text-gray-600">Total GST Collected</span>
-                                <span className="font-bold">₹{analytics.totalGST?.toFixed(2) || '0.00'}</span>
-                            </div>
-                            <div className="flex justify-between border-b pb-2">
-                                <span className="text-gray-600">Total Revenue (All Time)</span>
-                                <span className="font-bold text-[#d89945]">₹{analytics.totalRevenue?.toFixed(2) || '0.00'}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="text-lg font-bold mb-4">Top Products</h3>
-                        <div className="space-y-4">
-                            {analytics.topProducts?.map((item: any, idx: number) => (
-                                <div key={item.productName} className="flex justify-between items-center border-b pb-2">
-                                    <div className="flex gap-3 items-center">
-                                        <span className="font-bold text-gray-400">#{idx + 1}</span>
-                                        <span className="font-bold text-sm">{item.productName}</span>
-                                    </div>
-                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded font-bold">{item._sum.quantity} Sold</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
           </>
         )}
       </main>

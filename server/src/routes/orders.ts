@@ -169,14 +169,22 @@ router.post('/', async (req, res) => {
                 const emailSuccess = await sendOrderEmail(orderResult);
                 await prisma.communication.updateMany({
                     where: { orderId: orderResult.id, type: 'EMAIL' },
-                    data: { status: emailSuccess ? 'SENT' : 'FAILED' }
+                    data: {
+                        status: emailSuccess ? 'SENT' : 'FAILED',
+                        attempts: 1,
+                        failureReason: emailSuccess ? null : 'Initial synchronous send failed'
+                    }
                 });
             }
             if (orderResult.phone) {
                 const waSuccess = await sendWhatsAppMessage(orderResult);
                 await prisma.communication.updateMany({
                     where: { orderId: orderResult.id, type: 'WHATSAPP' },
-                    data: { status: waSuccess ? 'SENT' : 'FAILED' }
+                    data: {
+                        status: waSuccess ? 'SENT' : 'FAILED',
+                        attempts: 1,
+                        failureReason: waSuccess ? null : 'Initial synchronous send failed'
+                    }
                 });
             }
         } catch (e) {
