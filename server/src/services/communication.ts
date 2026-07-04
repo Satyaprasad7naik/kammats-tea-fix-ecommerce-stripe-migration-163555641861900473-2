@@ -1,11 +1,13 @@
 import nodemailer from 'nodemailer';
+import { PrismaClient } from '@prisma/client';
 import { generateInvoicePDFBuffer } from '../utils/invoice';
+
+const prisma = new PrismaClient();
 
 export const sendOrderEmail = async (order: any) => {
   try {
     if (!order.email) return false;
 
-    // Use a mock transporter if actual credentials are not provided
     let transporter;
     if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
         transporter = nodemailer.createTransport({
@@ -18,7 +20,6 @@ export const sendOrderEmail = async (order: any) => {
           },
         });
     } else {
-        // Ethereal mock account for development
         const testAccount = await nodemailer.createTestAccount();
         transporter = nodemailer.createTransport({
             host: "smtp.ethereal.email",
@@ -59,16 +60,52 @@ export const sendOrderEmail = async (order: any) => {
 export const sendWhatsAppMessage = async (order: any) => {
   try {
     if (!order.phone) return false;
-
-    // In a real application, you would integrate Twilio or WhatsApp Business API here.
-    // We simulate the API call latency and success.
-
     await new Promise(resolve => setTimeout(resolve, 500));
-
     console.log(`[SIMULATED] WhatsApp sent to ${order.phone} for order ${order.orderNumber}`);
     return true;
   } catch (error) {
     console.error('Failed to send WhatsApp message:', error);
     return false;
   }
+};
+
+export const startCommunicationRetryJob = () => {
+    console.log("Communication retry background job started.");
+
+    // Check every 5 minutes
+    setInterval(async () => {
+        try {
+            const failedCommunications = await prisma.communication.findMany({
+                where: {
+                    status: {
+                        in: ['PENDING', 'FAILED']
+                    }
+                },
+                include: { order: { include: { items: true } } }
+            });
+
+            for (const comm of failedCommunications) {
+                let success = false;
+                if (comm.type === 'EMAIL') {
+                    success = await sendOrderEmail(comm.order);
+                } else if (comm.type === 'WHATSAPP') {
+                    success = await sendWhatsAppMessage(comm.order);
+                }
+
+                await prisma.communication.update({
+                    where: { id: comm.id },
+                    data: {
+                        status: success ? 'SENT' : 'FAILED',
+                        updatedAt: new Date()
+                    }
+                });
+
+                if (success) {
+                    console.log(`Successfully retried ${comm.type} for Order ${comm.order.orderNumber}`);
+                }
+            }
+        } catch (err) {
+            console.error('Communication retry job error:', err);
+        }
+    }, 5 * 60 * 1000);
 };

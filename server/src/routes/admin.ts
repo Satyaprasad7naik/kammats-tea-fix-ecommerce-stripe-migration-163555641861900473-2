@@ -159,7 +159,7 @@ router.get('/orders', authenticateAdmin, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { items: true }
+      include: { items: true, communications: true }
     });
 
     res.json(orders);

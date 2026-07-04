@@ -10,11 +10,14 @@ import cookieParser from 'cookie-parser';
 import os from 'os';
 import { requestLogger } from './middleware/logger';
 import { startBackupCron } from './utils/backup';
+import { startCommunicationRetryJob } from './services/communication';
+import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const prisma = new PrismaClient();
 
 // Security Middlewares
 app.use(helmet());
@@ -42,15 +45,24 @@ app.use('/api/products', productsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/admin', adminRouter);
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const freeMem = os.freemem();
   const totalMem = os.totalmem();
   const usedMem = totalMem - freeMem;
   const memoryUsagePercent = ((usedMem / totalMem) * 100).toFixed(2);
 
+  let dbStatus = 'disconnected';
+  try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbStatus = 'connected';
+  } catch (err) {
+      console.error('Database connectivity check failed', err);
+  }
+
   res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
+      database: dbStatus,
       server: {
           uptime: process.uptime(),
           memoryUsage: `${memoryUsagePercent}%`,
@@ -69,4 +81,5 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   startBackupCron();
+  startCommunicationRetryJob();
 });
