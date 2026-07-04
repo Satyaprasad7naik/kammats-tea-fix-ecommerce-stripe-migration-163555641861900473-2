@@ -51,9 +51,14 @@ export const sendOrderEmail = async (order: any) => {
     const info = await transporter.sendMail(mailOptions);
     console.log(`Email sent: ${info.messageId}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    // Intelligent failure classification
+    let reason = "Unknown SMTP Error";
+    if (error.code === 'ECONNECTION') reason = "Network Connection Error";
+    if (error.responseCode >= 500) reason = "SMTP Server Error";
+    if (error.responseCode >= 400 && error.responseCode < 500) reason = "SMTP Auth/Client Error";
     console.error('Failed to send order email:', error);
-    return false;
+    throw new Error(reason);
   }
 };
 
@@ -61,11 +66,17 @@ export const sendWhatsAppMessage = async (order: any) => {
   try {
     if (!order.phone) return false;
     await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Simulate a failure for observability testing randomly 5% of time
+    if (Math.random() < 0.05) {
+        throw new Error("WhatsApp API Timeout");
+    }
+
     console.log(`[SIMULATED] WhatsApp sent to ${order.phone} for order ${order.orderNumber}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to send WhatsApp message:', error);
-    return false;
+    throw new Error(error.message || "WhatsApp Provider API Error");
   }
 };
 
@@ -94,10 +105,8 @@ export const startCommunicationRetryJob = () => {
                 try {
                     if (comm.type === 'EMAIL') {
                         success = await sendOrderEmail(comm.order);
-                        if (!success) failureReason = "SMTP connection or provider error";
                     } else if (comm.type === 'WHATSAPP') {
                         success = await sendWhatsAppMessage(comm.order);
-                        if (!success) failureReason = "WhatsApp provider API error";
                     }
                 } catch(e: any) {
                     success = false;

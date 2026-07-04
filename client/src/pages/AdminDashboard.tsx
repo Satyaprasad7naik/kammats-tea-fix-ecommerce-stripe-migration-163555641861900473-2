@@ -8,12 +8,13 @@ const AdminDashboard = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'inventory'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'inventory' | 'health'>('dashboard');
 
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
 
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -67,6 +68,7 @@ const AdminDashboard = () => {
         setStats(null);
         setProducts([]);
         setAnalytics(null);
+        setHealth(null);
       } catch(e) {
           console.error(e);
       }
@@ -107,6 +109,22 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchHealthData = async () => {
+      setLoading(true);
+      try {
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+          const res = await fetch(`${apiUrl}/api/admin/system-health`, {credentials: 'include'});
+          if (res.ok) {
+              const data = await res.json();
+              setHealth(data);
+          }
+      } catch (e) {
+          console.error("Failed to fetch health data", e);
+      } finally {
+          setLoading(false);
+      }
+  }
+
   const updateOrderStatus = async (id: string, orderStatus: string) => {
       try {
           const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -143,6 +161,12 @@ const AdminDashboard = () => {
           console.error("Failed to update stock", e);
       }
   };
+
+  useEffect(() => {
+      if (activeTab === 'health' && !health) {
+          fetchHealthData();
+      }
+  }, [activeTab]);
 
   if (!isAuthenticated) {
     return (
@@ -197,24 +221,30 @@ const AdminDashboard = () => {
       </nav>
 
       <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto flex">
+          <div className="max-w-7xl mx-auto flex overflow-x-auto">
               <button
                   onClick={() => setActiveTab('dashboard')}
-                  className={`px-6 py-4 font-bold text-sm ${activeTab === 'dashboard' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
+                  className={`px-6 py-4 font-bold text-sm whitespace-nowrap ${activeTab === 'dashboard' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
               >
                   Command Center
               </button>
               <button
                   onClick={() => setActiveTab('orders')}
-                  className={`px-6 py-4 font-bold text-sm ${activeTab === 'orders' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
+                  className={`px-6 py-4 font-bold text-sm whitespace-nowrap ${activeTab === 'orders' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
               >
                   Order Management
               </button>
               <button
                   onClick={() => setActiveTab('inventory')}
-                  className={`px-6 py-4 font-bold text-sm ${activeTab === 'inventory' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
+                  className={`px-6 py-4 font-bold text-sm whitespace-nowrap ${activeTab === 'inventory' ? 'border-b-2 border-[#d89945] text-[#d89945]' : 'text-gray-500 hover:text-gray-800'}`}
               >
                   Inventory
+              </button>
+              <button
+                  onClick={() => setActiveTab('health')}
+                  className={`px-6 py-4 font-bold text-sm whitespace-nowrap ${activeTab === 'health' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+              >
+                  System Health
               </button>
           </div>
       </div>
@@ -358,7 +388,7 @@ const AdminDashboard = () => {
                             <td className="p-4">
                                <div className="flex gap-1 mb-2 justify-end">
                                     {order.communications?.map((comm: any) => (
-                                        <span key={comm.id} title={`${comm.type} - ${comm.status}`} className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${comm.status === 'SENT' ? 'bg-green-100 text-green-600' : comm.status === 'FAILED' ? 'bg-red-100 text-red-600' : comm.status === 'DEAD_LETTER' ? 'bg-gray-800 text-white' : 'bg-yellow-100 text-yellow-600'}`}>
+                                        <span key={comm.id} title={`${comm.type} - ${comm.status} (${comm.failureReason || 'N/A'})`} className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${comm.status === 'SENT' ? 'bg-green-100 text-green-600' : comm.status === 'FAILED' ? 'bg-red-100 text-red-600' : comm.status === 'DEAD_LETTER' ? 'bg-gray-800 text-white' : 'bg-yellow-100 text-yellow-600'}`}>
                                             <i className={comm.type === 'EMAIL' ? 'ri-mail-line' : 'ri-whatsapp-line'}></i>
                                         </span>
                                     ))}
@@ -444,6 +474,45 @@ const AdminDashboard = () => {
                       </tbody>
                     </table>
                   </div>
+                </div>
+            )}
+
+            {activeTab === 'health' && health && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                       <h2 className="text-3xl font-bold text-gray-800 tracking-tight">System Health</h2>
+                       <button onClick={fetchHealthData} className="text-gray-500 hover:text-blue-500 transition-colors">
+                          <i className="ri-refresh-line text-xl"></i>
+                       </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                           <p className="text-gray-500 text-sm font-bold mb-1">Database Connectivity</p>
+                           <h3 className={`text-xl font-black ${health.database === 'connected' ? 'text-green-500' : 'text-red-500'} uppercase tracking-widest`}>
+                               {health.database}
+                           </h3>
+                       </div>
+                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                           <p className="text-gray-500 text-sm font-bold mb-1">System Memory</p>
+                           <h3 className="text-3xl font-black text-gray-800">{health.memoryUsage}</h3>
+                           <p className="text-xs text-gray-400 mt-1">{health.freeMemoryMB} MB Free / {health.totalMemoryMB} MB Total</p>
+                       </div>
+                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                           <p className="text-gray-500 text-sm font-bold mb-1">Sheets Sync Lag</p>
+                           <h3 className={`text-3xl font-black ${health.metrics.unsyncedSheetsCount > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                               {health.metrics.unsyncedSheetsCount}
+                           </h3>
+                           <p className="text-xs text-gray-400 mt-1">Pending Google Syncs</p>
+                       </div>
+                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                           <p className="text-gray-500 text-sm font-bold mb-1">Dead Letters</p>
+                           <h3 className={`text-3xl font-black ${health.metrics.deadLetterCount > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                               {health.metrics.deadLetterCount}
+                           </h3>
+                           <p className="text-xs text-gray-400 mt-1">Comms permanently failed</p>
+                       </div>
+                    </div>
                 </div>
             )}
 
