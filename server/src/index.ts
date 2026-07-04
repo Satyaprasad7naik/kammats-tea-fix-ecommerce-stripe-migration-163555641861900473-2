@@ -7,6 +7,9 @@ import productsRouter from './routes/products';
 import ordersRouter from './routes/orders';
 import adminRouter from './routes/admin';
 import cookieParser from 'cookie-parser';
+import os from 'os';
+import { requestLogger } from './middleware/logger';
+import { startBackupCron } from './utils/backup';
 
 dotenv.config();
 
@@ -15,6 +18,9 @@ const PORT = process.env.PORT || 5000;
 
 // Security Middlewares
 app.use(helmet());
+
+// Logging Middleware
+app.use(requestLogger);
 
 // Global Rate Limiter
 const limiter = rateLimit({
@@ -37,7 +43,21 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/admin', adminRouter);
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const freeMem = os.freemem();
+  const totalMem = os.totalmem();
+  const usedMem = totalMem - freeMem;
+  const memoryUsagePercent = ((usedMem / totalMem) * 100).toFixed(2);
+
+  res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      server: {
+          uptime: process.uptime(),
+          memoryUsage: `${memoryUsagePercent}%`,
+          freeMemoryMB: (freeMem / 1024 / 1024).toFixed(2),
+          totalMemoryMB: (totalMem / 1024 / 1024).toFixed(2)
+      }
+  });
 });
 
 // Centralized Error Handling Middleware
@@ -48,4 +68,5 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  startBackupCron();
 });

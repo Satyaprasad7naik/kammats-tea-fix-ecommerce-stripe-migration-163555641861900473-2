@@ -112,7 +112,7 @@ router.post('/', async (req, res) => {
           gstTotal,
           grandTotal,
           paymentStatus: 'PENDING',
-          orderStatus: 'PROCESSING',
+          orderStatus: 'SUBMITTED',
           businessType: resolvedBusinessType,
           notes: notes || null,
           items: {
