@@ -329,19 +329,6 @@ import os from 'os';
 // System Health Monitoring
 router.get('/system-health', authenticateAdmin, async (req, res) => {
     try {
-        const freeMem = os.freemem();
-        const totalMem = os.totalmem();
-        const usedMem = totalMem - freeMem;
-        const memoryUsagePercent = ((usedMem / totalMem) * 100).toFixed(2);
-
-        let dbStatus = 'disconnected';
-        try {
-            await prisma.$queryRaw`SELECT 1`;
-            dbStatus = 'connected';
-        } catch (err) {
-            console.error('Database connectivity check failed', err);
-        }
-
         const unsyncedSheetsCount = await prisma.order.count({
             where: { googleSheetsSynced: false }
         });
@@ -350,21 +337,22 @@ router.get('/system-health', authenticateAdmin, async (req, res) => {
             where: { status: 'DEAD_LETTER' }
         });
 
-        const pendingCommCount = await prisma.communication.count({
-            where: { status: 'PENDING' }
+        const failedCommunicationsCount = await prisma.communication.count({
+            where: { status: 'FAILED' }
+        });
+
+        const pendingOrdersCount = await prisma.order.count({
+            where: { orderStatus: 'SUBMITTED' }
         });
 
         res.json({
             status: 'ok',
             timestamp: new Date().toISOString(),
-            database: dbStatus,
-            memoryUsage: `${memoryUsagePercent}%`,
-            freeMemoryMB: (freeMem / 1024 / 1024).toFixed(2),
-            uptimeSeconds: process.uptime(),
             metrics: {
                 unsyncedSheetsCount,
                 deadLetterCount,
-                pendingCommCount
+                failedCommunicationsCount,
+                pendingOrdersCount
             }
         });
     } catch (error) {
