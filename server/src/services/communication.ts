@@ -4,6 +4,8 @@ import { generateInvoicePDFBuffer } from '../utils/invoice';
 
 const prisma = new PrismaClient();
 
+export type CommunicationErrorReason = 'NETWORK_ERROR' | 'PROVIDER_ERROR' | 'AUTHENTICATION_ERROR' | 'TIMEOUT' | 'UNKNOWN_ERROR';
+
 export const sendOrderEmail = async (order: any) => {
   try {
     if (!order.email) return false;
@@ -52,12 +54,13 @@ export const sendOrderEmail = async (order: any) => {
     console.log(`Email sent: ${info.messageId}`);
     return true;
   } catch (error: any) {
-    let reason = "UNKNOWN_ERROR";
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') reason = "NETWORK_ERROR";
-    else if (error.responseCode >= 500) reason = "PROVIDER_ERROR";
-    else if (error.responseCode >= 400 && error.responseCode < 500) reason = "AUTHENTICATION_ERROR";
+    let reason: CommunicationErrorReason = 'UNKNOWN_ERROR';
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') reason = 'NETWORK_ERROR';
+    else if (error.responseCode >= 500) reason = 'PROVIDER_ERROR';
+    else if (error.responseCode >= 400 && error.responseCode < 500) reason = 'AUTHENTICATION_ERROR';
 
-    console.error('Failed to send order email:', error);
+    // Log the full stack trace for internal debugging but throw only the sanitized enum reason
+    console.error('Failed to send order email. Raw Error:', error);
     throw new Error(reason);
   }
 };
@@ -76,12 +79,13 @@ export const sendWhatsAppMessage = async (order: any) => {
     console.log(`[SIMULATED] WhatsApp sent to ${order.phone} for order ${order.orderNumber}`);
     return true;
   } catch (error: any) {
-    let reason = "UNKNOWN_ERROR";
-    if (error.message === 'TIMEOUT') reason = "TIMEOUT";
-    else if (error.message.includes('Auth')) reason = "AUTHENTICATION_ERROR";
-    else if (error.message.includes('Network')) reason = "NETWORK_ERROR";
+    let reason: CommunicationErrorReason = 'UNKNOWN_ERROR';
+    if (error.message === 'TIMEOUT') reason = 'TIMEOUT';
+    else if (error.message.includes('Auth')) reason = 'AUTHENTICATION_ERROR';
+    else if (error.message.includes('Network')) reason = 'NETWORK_ERROR';
 
-    console.error('Failed to send WhatsApp message:', error);
+    // Log the full stack trace for internal debugging but throw only the sanitized enum reason
+    console.error('Failed to send WhatsApp message. Raw Error:', error);
     throw new Error(reason);
   }
 };
@@ -116,7 +120,7 @@ export const startCommunicationRetryJob = () => {
                     }
                 } catch(e: any) {
                     success = false;
-                    failureReason = e.message || "Unknown error";
+                    failureReason = e.message || 'UNKNOWN_ERROR';
                 }
 
                 const newAttempts = comm.attempts + 1;
