@@ -1,4 +1,0 @@
-1. Modify `client/src/pages/ShopPage.tsx` to include `useNavigate` from `react-router-dom`.
-2. Add an `onClick` event to the `ProductCard` root div (`<div ref={cardRef} ...>`) so that clicking it navigates to `/product/${product.slug}`.
-3. Create a new `ProductPage.tsx` component in `client/src/pages` that fetches product details based on the slug and displays them, like a typical product explore page.
-4. Add the route `/product/:slug` to `client/src/App.tsx`.
