@@ -1,6 +1,8 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { generateInvoicePDF } from '../utils/invoice';
+import { generateInvoicePDFBuffer } from '../utils/invoice';
+import { sendOrderEmail, sendWhatsAppMessage } from '../services/communication';
+import { appendOrderToSheet } from '../services/googleSheets';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -131,30 +133,56 @@ router.post('/', async (req, res) => {
         }
       });
 
-      // Create Communications (Simulated)
+      // Create Communication pending records
       if (email) {
           await tx.communication.create({
               data: {
                   orderId: newOrder.id,
                   type: 'EMAIL',
                   recipient: email,
-                  status: 'SENT',
+                  status: 'PENDING',
                   message: `Order confirmation for ${orderNumber}`
               }
           });
       }
-      await tx.communication.create({
-          data: {
-              orderId: newOrder.id,
-              type: 'WHATSAPP',
-              recipient: phone,
-              status: 'SENT',
-              message: `Order confirmation for ${orderNumber}`
-          }
-      });
+      if (phone) {
+          await tx.communication.create({
+              data: {
+                  orderId: newOrder.id,
+                  type: 'WHATSAPP',
+                  recipient: phone,
+                  status: 'PENDING',
+                  message: `Order confirmation for ${orderNumber}`
+              }
+          });
+      }
 
       return newOrder;
     });
+
+    // Fire and forget communication sending and syncing
+    (async () => {
+        try {
+            await appendOrderToSheet(orderResult);
+
+            if (orderResult.email) {
+                const emailSuccess = await sendOrderEmail(orderResult);
+                await prisma.communication.updateMany({
+                    where: { orderId: orderResult.id, type: 'EMAIL' },
+                    data: { status: emailSuccess ? 'SENT' : 'FAILED' }
+                });
+            }
+            if (orderResult.phone) {
+                const waSuccess = await sendWhatsAppMessage(orderResult);
+                await prisma.communication.updateMany({
+                    where: { orderId: orderResult.id, type: 'WHATSAPP' },
+                    data: { status: waSuccess ? 'SENT' : 'FAILED' }
+                });
+            }
+        } catch (e) {
+            console.error("Async communication/sync failed", e);
+        }
+    })();
 
     const upiId = process.env.BUSINESS_UPI_ID || 'spylt@upi';
     const upiName = process.env.BUSINESS_NAME || 'SPYLT Beverages';
@@ -182,7 +210,10 @@ router.get('/:id/customer-invoice', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    await generateInvoicePDF(order, res, 'CUSTOMER');
+    const pdfBuffer = await generateInvoicePDFBuffer(order, 'CUSTOMER');
+    res.setHeader('Content-disposition', `attachment; filename=invoice-${order.invoiceNumber || order.orderNumber}.pdf`);
+    res.setHeader('Content-type', 'application/pdf');
+    res.send(pdfBuffer);
 
   } catch (error) {
     console.error('Error generating invoice:', error);
@@ -205,7 +236,10 @@ router.get('/:id/internal-invoice', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    await generateInvoicePDF(order, res, 'INTERNAL');
+    const pdfBuffer = await generateInvoicePDFBuffer(order, 'INTERNAL');
+    res.setHeader('Content-disposition', `attachment; filename=invoice-${order.internalInvoiceNumber || order.orderNumber}.pdf`);
+    res.setHeader('Content-type', 'application/pdf');
+    res.send(pdfBuffer);
 
   } catch (error) {
     console.error('Error generating internal invoice:', error);

@@ -65,7 +65,10 @@ router.post('/logout', (req, res) => {
 // Check auth status
 router.get('/me', (req, res) => {
   const token = req.cookies.admin_token;
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -75,18 +78,85 @@ router.get('/me', (req, res) => {
   }
 });
 
-// Get all orders (Protected)
-router.get('/orders', async (req, res) => {
-  try {
+// Middleware for protected routes
+const authenticateAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const token = req.cookies.admin_token;
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    try {
-      jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      return res.status(401).json({ error: 'Invalid token' });
+    if (!token) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
     }
 
+    try {
+        jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+// Dashboard Stats
+router.get('/dashboard-stats', authenticateAdmin, async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const orders = await prisma.order.findMany();
+
+        const todaysOrders = orders.filter((o: any) => new Date(o.createdAt) >= today);
+        const todaysRevenue = todaysOrders.reduce((sum: number, o: any) => sum + o.grandTotal, 0);
+
+        const b2bOrders = orders.filter((o: any) => o.businessType === 'B2B').length;
+        const b2cOrders = orders.filter((o: any) => o.businessType === 'B2C').length;
+
+        const pendingOrders = orders.filter((o: any) => o.orderStatus === 'PROCESSING').length;
+        const completedOrders = orders.filter((o: any) => o.orderStatus === 'DELIVERED').length;
+
+        const lowStockProducts = await prisma.product.findMany({
+            where: { stock: { lte: 10 } },
+            select: { id: true, name: true, stock: true }
+        });
+
+        res.json({
+            todaysRevenue,
+            todaysOrdersCount: todaysOrders.length,
+            b2bOrders,
+            b2cOrders,
+            pendingOrders,
+            completedOrders,
+            lowStockProducts
+        });
+    } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+});
+
+// Update Product Stock
+router.put('/products/:id/stock', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { stock } = req.body;
+
+        if (typeof stock !== 'number' || stock < 0) {
+            res.status(400).json({ error: 'Invalid stock value' });
+            return;
+        }
+
+        const product = await prisma.product.update({
+            where: { id: id as string },
+            data: { stock }
+        });
+
+        res.json(product);
+    } catch (error) {
+        console.error('Error updating stock:', error);
+        res.status(500).json({ error: 'Failed to update stock' });
+    }
+});
+
+// Get all orders (Protected)
+router.get('/orders', authenticateAdmin, async (req, res) => {
+  try {
     const orders = await prisma.order.findMany({
       orderBy: { createdAt: 'desc' },
       include: { items: true }
