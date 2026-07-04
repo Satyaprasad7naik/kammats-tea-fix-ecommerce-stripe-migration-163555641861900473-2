@@ -169,4 +169,125 @@ router.get('/orders', authenticateAdmin, async (req, res) => {
   }
 });
 
+// Product CRUD endpoints
+
+router.get('/products', authenticateAdmin, async (req, res) => {
+    try {
+        const products = await prisma.product.findMany({ orderBy: { createdAt: 'desc' }});
+        res.json(products);
+    } catch (error) {
+        console.error('Error fetching products:', error);
+        res.status(500).json({ error: 'Failed to fetch products' });
+    }
+});
+
+router.post('/products', authenticateAdmin, async (req, res) => {
+    try {
+        const product = await prisma.product.create({
+            data: req.body
+        });
+        res.status(201).json(product);
+    } catch (error) {
+        console.error('Error creating product:', error);
+        res.status(500).json({ error: 'Failed to create product' });
+    }
+});
+
+router.put('/products/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const product = await prisma.product.update({
+            where: { id: id as string },
+            data: req.body
+        });
+        res.json(product);
+    } catch (error) {
+        console.error('Error updating product:', error);
+        res.status(500).json({ error: 'Failed to update product' });
+    }
+});
+
+router.delete('/products/:id', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.product.delete({
+            where: { id: id as string }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        res.status(500).json({ error: 'Failed to delete product' });
+    }
+});
+
+// Update Order Status
+router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { orderStatus, paymentStatus } = req.body;
+
+        const dataToUpdate: any = {};
+        if (orderStatus) dataToUpdate.orderStatus = orderStatus;
+        if (paymentStatus) dataToUpdate.paymentStatus = paymentStatus;
+
+        const order = await prisma.order.update({
+            where: { id: id as string },
+            data: dataToUpdate
+        });
+
+        // Log the status change
+        await prisma.auditLog.create({
+            data: {
+                orderId: id as string,
+                action: 'STATUS_UPDATE',
+                details: `Status updated to ${orderStatus || 'UNCHANGED'}, Payment: ${paymentStatus || 'UNCHANGED'}`
+            }
+        });
+
+        res.json(order);
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        res.status(500).json({ error: 'Failed to update order status' });
+    }
+});
+
 export default router;
+
+// Analytics
+router.get('/analytics', authenticateAdmin, async (req, res) => {
+    try {
+        const orders = await prisma.order.findMany();
+
+        const totalRevenue = orders.reduce((sum: number, o: any) => sum + o.grandTotal, 0);
+        const totalGST = orders.reduce((sum: number, o: any) => sum + o.gstTotal, 0);
+
+        const orderDates = orders.map((o: any) => new Date(o.createdAt).setHours(0,0,0,0));
+        const uniqueDays = new Set(orderDates).size || 1;
+
+        const dailyAvg = totalRevenue / uniqueDays;
+
+        const topProducts = await prisma.orderItem.groupBy({
+            by: ['productId', 'productName'],
+            _sum: {
+                quantity: true,
+                lineTotal: true
+            },
+            orderBy: {
+                _sum: {
+                    quantity: 'desc'
+                }
+            },
+            take: 5
+        });
+
+        res.json({
+            totalRevenue,
+            totalGST,
+            dailyAvg,
+            topProducts
+        });
+    } catch (error) {
+        console.error('Error fetching analytics:', error);
+        res.status(500).json({ error: 'Failed to fetch analytics' });
+    }
+});
