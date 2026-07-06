@@ -106,8 +106,8 @@ router.post('/', async (req, res) => {
           gstTotal,
           grandTotal,
           totalAmount,
-          paymentStatus: 'PENDING',
-          orderStatus: 'PROCESSING',
+
+
           items: {
             create: orderItemsData
           }
