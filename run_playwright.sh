@@ -11,7 +11,7 @@ CLIENT_PID=$!
 sleep 15
 
 cd ..
-npx playwright test
+npx playwright test --reporter=line
 echo "Playwright exited with $?"
 
 kill $SERVER_PID

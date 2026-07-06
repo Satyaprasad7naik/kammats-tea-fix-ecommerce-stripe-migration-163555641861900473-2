@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('E-commerce User Flow', () => {
   test('Product listing loads correctly', async ({ page }) => {
-    await page.goto('http://localhost:4173/shop');
+    await page.goto('http://localhost:5173/shop');
 
     // Wait for network request to complete and elements to be rendered
     await page.waitForSelector('.shop-card');
@@ -12,7 +12,7 @@ test.describe('E-commerce User Flow', () => {
   });
 
   test('Product details show price and add to cart works', async ({ page }) => {
-    await page.goto('http://localhost:4173/shop');
+    await page.goto('http://localhost:5173/shop');
     await page.waitForSelector('.shop-card');
 
     // Get the first product card
@@ -36,7 +36,7 @@ test.describe('E-commerce User Flow', () => {
   });
 
   test('Cart quantity increase/decrease and total updates', async ({ page }) => {
-    await page.goto('http://localhost:4173/shop');
+    await page.goto('http://localhost:5173/shop');
     await page.waitForSelector('.shop-card');
 
     // Add first product to cart
@@ -63,7 +63,7 @@ test.describe('E-commerce User Flow', () => {
   });
 
   test('Checkout form validation works', async ({ page }) => {
-    await page.goto('http://localhost:4173/shop');
+    await page.goto('http://localhost:5173/shop');
     await page.waitForSelector('.shop-card');
 
     // Add to cart and proceed to checkout
@@ -82,7 +82,7 @@ test.describe('E-commerce User Flow', () => {
   });
 
   test('Order summary shows subtotal, GST, and grand total', async ({ page }) => {
-    await page.goto('http://localhost:4173/shop');
+    await page.goto('http://localhost:5173/shop');
     await page.waitForSelector('.shop-card');
 
     // Add to cart and proceed to checkout
@@ -99,7 +99,7 @@ test.describe('E-commerce User Flow', () => {
 
 test.describe('Admin Flow', () => {
   test('Admin login works', async ({ page }) => {
-    await page.goto('http://localhost:4173/admin');
+    await page.goto('http://localhost:5173/admin');
 
     await expect(page.locator('h1', { hasText: 'Admin Login' })).toBeVisible();
 
