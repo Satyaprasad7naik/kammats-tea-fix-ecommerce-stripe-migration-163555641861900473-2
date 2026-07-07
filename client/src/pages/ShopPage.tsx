@@ -8,12 +8,8 @@ import { useCart } from '../context/CartContext';
 interface Product {
   id: string;
   name: string;
-  slug: string;
   description: string;
-  shortDescription: string;
   price: number;
-  gstRate: number;
-  hsnCode: string;
   stock: number;
   category: string;
   images: string[];
@@ -79,9 +75,9 @@ const ProductCard = ({ product }: { product: Product }) => {
             addToCart({
               id: product.id,
               name: product.name,
-              slug: product.slug,
+              slug: product.id, // using id as slug for now since we removed slug from prisma schema
               price: product.price,
-              gstRate: product.gstRate,
+              gstRate: 18, // using 18% gst rate
               image: image1,
               stock: product.stock,
             });

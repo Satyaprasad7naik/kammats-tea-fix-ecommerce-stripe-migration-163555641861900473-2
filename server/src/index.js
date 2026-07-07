@@ -8,7 +8,6 @@ const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const products_1 = __importDefault(require("./routes/products"));
 const orders_1 = __importDefault(require("./routes/orders"));
-const webhooks_1 = __importDefault(require("./routes/webhooks"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 dotenv_1.default.config();
@@ -19,8 +18,6 @@ app.use((0, cors_1.default)({
     credentials: true
 }));
 app.use((0, cookie_parser_1.default)());
-// Webhooks must be parsed as raw bytes before express.json() for Razorpay signature verification
-app.use('/api/webhooks', express_1.default.raw({ type: 'application/json' }), webhooks_1.default);
 app.use(express_1.default.json());
 app.use('/api/products', products_1.default);
 app.use('/api/orders', orders_1.default);
