@@ -1,95 +1,114 @@
 import PDFDocument from 'pdfkit';
 import { Response } from 'express';
 
-export const generateInvoicePDF = (order: any, res: Response) => {
-  const doc = new PDFDocument({ margin: 50 });
+export const generateInvoicePDFBuffer = async (order: any, type: 'CUSTOMER' | 'INTERNAL'): Promise<Buffer> => {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50 });
+        const chunks: Buffer[] = [];
 
-  res.setHeader('Content-disposition', `attachment; filename=invoice-${order.invoiceNumber || order.orderNumber}.pdf`);
-  res.setHeader('Content-type', 'application/pdf');
+        doc.on('data', (chunk) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
 
-  doc.pipe(res);
+        const businessName = process.env.BUSINESS_NAME || 'SPYLT Beverages';
+        const businessGstin = process.env.BUSINESS_GSTIN || '27XXXXX1234X1XZ';
+        const businessAddress = process.env.BUSINESS_ADDRESS || '123 Main Street, Mumbai, Maharashtra 400001';
 
-  const businessName = process.env.BUSINESS_NAME || 'SPYLT Beverages';
-  const businessGstin = process.env.BUSINESS_GSTIN || '27XXXXX1234X1XZ';
-  const businessAddress = process.env.BUSINESS_ADDRESS || '123 Main Street, Mumbai, Maharashtra 400001';
+        // Header
+        doc.fontSize(20).font('Helvetica-Bold').text(businessName, { align: 'center' });
+        doc.fontSize(10).font('Helvetica').text(businessAddress, { align: 'center' });
+        doc.text(`GSTIN: ${businessGstin}`, { align: 'center' });
+        doc.moveDown();
 
-  // Header
-  doc.fontSize(20).font('Helvetica-Bold').text(businessName, { align: 'center' });
-  doc.fontSize(10).font('Helvetica').text(businessAddress, { align: 'center' });
-  doc.text(`GSTIN: ${businessGstin}`, { align: 'center' });
-  doc.moveDown();
+        const title = type === 'INTERNAL' ? 'INTERNAL ORDER AUDIT' : 'TAX INVOICE';
+        doc.fontSize(16).font('Helvetica-Bold').text(title, { align: 'center' });
+        doc.moveDown();
 
-  doc.fontSize(16).font('Helvetica-Bold').text('TAX INVOICE', { align: 'center' });
-  doc.moveDown();
+        // Order Details
+        doc.fontSize(10).font('Helvetica');
+        doc.text(`Invoice No: ${order.invoiceNumber || 'N/A'}`);
+        doc.text(`Order No: ${order.orderNumber}`);
+        doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`);
+        doc.text(`Type: ${order.businessType}`);
+        doc.moveDown();
 
-  // Order Details
-  doc.fontSize(10).font('Helvetica');
-  doc.text(`Invoice No: ${order.invoiceNumber || 'N/A'}`);
-  doc.text(`Order No: ${order.orderNumber}`);
-  doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`);
-  doc.text(`Payment Status: ${order.paymentStatus}`);
-  doc.moveDown();
+        // Customer Details
+        doc.font('Helvetica-Bold').text('Billed To:');
+        doc.font('Helvetica').text(order.customerName);
+        doc.text(order.address);
+        doc.text(`${order.city}, ${order.state} - ${order.pincode}`);
+        doc.text(`Phone: ${order.phone}`);
+        if (order.email) doc.text(`Email: ${order.email}`);
 
-  // Customer Details
-  doc.font('Helvetica-Bold').text('Billed To:');
-  doc.font('Helvetica').text(order.customerName);
-  doc.text(order.address);
-  doc.text(`${order.city}, ${order.state} - ${order.pincode}`);
-  doc.text(`Phone: ${order.phone}`);
-  if (order.email) doc.text(`Email: ${order.email}`);
-  doc.moveDown(2);
+        if (type === 'INTERNAL' && order.customerNotes) {
+            doc.moveDown();
+            doc.font('Helvetica-Bold').text('Customer Notes:');
+            doc.font('Helvetica').text(order.customerNotes);
+        }
+        doc.moveDown(2);
 
-  // Table Header
-  const tableTop = doc.y;
-  doc.font('Helvetica-Bold');
-  doc.text('Item', 50, tableTop);
-  doc.text('HSN', 200, tableTop);
-  doc.text('Qty', 260, tableTop);
-  doc.text('Price', 300, tableTop);
-  doc.text('GST %', 360, tableTop);
-  doc.text('CGST', 410, tableTop);
-  doc.text('SGST', 460, tableTop);
-  doc.text('Total', 510, tableTop);
-  doc.moveDown();
+        // Table Header
+        const tableTop = doc.y;
+        doc.font('Helvetica-Bold');
+        doc.text('Item', 50, tableTop);
+        doc.text('Qty', 250, tableTop);
+        doc.text('Price', 300, tableTop);
+        doc.text('GST Amount', 380, tableTop);
+        doc.text('Total', 470, tableTop);
 
-  doc.moveTo(50, doc.y - 5).lineTo(550, doc.y - 5).stroke();
+        doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
 
-  // Table Rows
-  let y = doc.y + 5;
-  doc.font('Helvetica');
+        let y = tableTop + 25;
+        doc.font('Helvetica');
 
-  order.items.forEach((item: any) => {
-    const cgstAmount = item.gstAmount / 2;
-    const sgstAmount = item.gstAmount / 2;
+        // Table Rows
+        order.items.forEach((item: any) => {
+            doc.text(item.productName, 50, y);
+            doc.text(item.quantity.toString(), 250, y);
+            doc.text(`Rs. ${item.unitPrice.toFixed(2)}`, 300, y);
+            doc.text(`Rs. ${item.gstAmount.toFixed(2)}`, 380, y);
+            doc.text(`Rs. ${item.lineTotal.toFixed(2)}`, 470, y);
+            y += 20;
+        });
 
-    doc.text(item.productName.substring(0, 20), 50, y);
-    doc.text(item.hsnCode || 'N/A', 200, y);
-    doc.text(item.quantity.toString(), 260, y);
-    doc.text(`Rs. ${item.unitPrice.toFixed(2)}`, 300, y);
-    doc.text(`${item.gstRate}%`, 360, y);
-    doc.text(cgstAmount.toFixed(2), 410, y);
-    doc.text(sgstAmount.toFixed(2), 460, y);
-    doc.text(`Rs. ${item.lineTotal.toFixed(2)}`, 510, y);
+        doc.moveTo(50, y).lineTo(550, y).stroke();
+        y += 10;
 
-    y += 20;
-  });
+        // Totals
+        doc.font('Helvetica-Bold');
+        doc.text('Subtotal:', 380, y);
+        doc.text(`Rs. ${order.subtotal.toFixed(2)}`, 470, y);
+        y += 15;
 
-  doc.moveTo(50, y).lineTo(550, y).stroke();
-  doc.moveDown();
+        doc.text('Total GST:', 380, y);
+        doc.text(`Rs. ${order.gstTotal.toFixed(2)}`, 470, y);
+        y += 15;
 
-  y += 10;
+        doc.fontSize(12);
+        doc.text('Grand Total:', 380, y);
+        doc.text(`Rs. ${order.grandTotal.toFixed(2)}`, 470, y);
 
-  // Totals
-  doc.font('Helvetica-Bold');
-  doc.text('Subtotal:', 400, y);
-  doc.text(`Rs. ${order.subtotal.toFixed(2)}`, 510, y);
-  y += 15;
-  doc.text('GST Total:', 400, y);
-  doc.text(`Rs. ${order.gstTotal.toFixed(2)}`, 510, y);
-  y += 20;
-  doc.fontSize(12);
-  doc.text('Grand Total:', 400, y);
-  doc.text(`Rs. ${order.grandTotal.toFixed(2)}`, 510, y);
+        // Footer
+        doc.fontSize(10).font('Helvetica');
+        doc.text('Thank you for your business!', 50, 700, { align: 'center', width: 500 });
 
-  doc.end();
+        doc.end();
+    });
+};
+
+export const generateInvoicePDF = async (order: any, type: 'CUSTOMER' | 'INTERNAL', res: Response) => {
+    try {
+        const buffer = await generateInvoicePDFBuffer(order, type);
+
+        const prefix = type === 'INTERNAL' ? 'internal-audit' : 'invoice';
+        res.setHeader('Content-disposition', `attachment; filename=${prefix}-${order.invoiceNumber || order.orderNumber}.pdf`);
+        res.setHeader('Content-type', 'application/pdf');
+
+        res.end(buffer);
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to generate invoice PDF' });
+        }
+    }
 };

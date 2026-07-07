@@ -1,9 +1,95 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
-import { generateInvoicePDF } from '../utils/invoice';
+import { generateInvoicePDF, generateInvoicePDFBuffer } from '../utils/invoice';
+import { sendCustomerConfirmationEmail, sendAdminNotificationEmail } from '../utils/communications';
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+// Generate Invoice (HTTP Route for downloading)
+// NOTE: MUST Be before /:id otherwise /:id captures it
+router.get('/:id/invoice/:type', async (req, res) => {
+  try {
+    const { id, type } = req.params;
+
+    if (type !== 'CUSTOMER' && type !== 'INTERNAL') {
+        return res.status(400).json({ error: 'Invalid invoice type' });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+          OR: [
+              { id },
+              { orderNumber: id }
+          ]
+      },
+      include: { items: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    await generateInvoicePDF(order, type, res);
+
+  } catch (error) {
+    console.error('Error generating invoice:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate invoice' });
+    }
+  }
+});
+
+// Backward compatible route
+router.get('/:id/invoice', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      await generateInvoicePDF(order, 'CUSTOMER', res);
+
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to generate invoice' });
+      }
+    }
+});
+
+
+// Get a single order by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check by real ID or orderNumber
+    const order = await prisma.order.findFirst({
+      where: {
+          OR: [
+              { id },
+              { orderNumber: id }
+          ]
+      },
+      include: { items: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error('Error fetching order:', error);
+    res.status(500).json({ error: 'Failed to fetch order' });
+  }
+});
 
 // Create an order
 router.post('/', async (req, res) => {
@@ -38,26 +124,31 @@ router.post('/', async (req, res) => {
       const orderItemsData: any[] = [];
 
       for (const item of items) {
-        const product = await tx.product.findUnique({
-            where: { id: item.productId }
-        });
+        // Lock the product row
+        const products: any[] = await tx.$queryRaw`SELECT * FROM "Product" WHERE "id" = ${item.productId} `;
 
-        if (!product) {
+        if (products.length === 0) {
           throw new Error(`Product with id ${item.productId} not found`);
         }
 
-        // We assume unlimited stock for this business model, but keeping tracking logic active
-        // decrementing later if needed, or decrementing immediately.
-        // For simplicity, we just decrement immediately to maintain accurate stock records
+        const product = products[0];
+
+        if (product.stock < item.quantity) {
+          throw new Error(`Insufficient stock for product ${product.name}`);
+        }
+
+        // Decrement stock immediately since this is a direct order
         await tx.product.update({
-          where: { id: product.id },
-          data: { stock: { decrement: item.quantity } }
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.quantity
+            }
+          }
         });
 
         const itemSubtotal = Number((product.price * item.quantity).toFixed(2));
-        // Using a default 18% GST if not provided
-        const productGst = 18.0;
-        const itemGstAmount = Number(((itemSubtotal * productGst) / 100).toFixed(2));
+        const itemGstAmount = Number(((itemSubtotal * 18) / 100).toFixed(2));
         const lineTotal = Number((itemSubtotal + itemGstAmount).toFixed(2));
 
         subtotal += itemSubtotal;
@@ -68,8 +159,8 @@ router.post('/', async (req, res) => {
           productName: product.name,
           quantity: item.quantity,
           unitPrice: product.price,
-          price: product.price,
-          gstRate: productGst,
+          price: product.price, // ensure backwards compatibility
+          gstRate: 18,
           gstAmount: itemGstAmount,
           lineTotal: lineTotal
         });
@@ -78,14 +169,15 @@ router.post('/', async (req, res) => {
       subtotal = Number(subtotal.toFixed(2));
       gstTotal = Number(gstTotal.toFixed(2));
       const grandTotal = Number((subtotal + gstTotal).toFixed(2));
-      const totalAmount = grandTotal;
+      const totalAmount = grandTotal; // Total amount includes GST
 
       const timestamp = Date.now().toString().slice(-6);
-      const orderNumber = `ORD-${timestamp}-${Math.floor(Math.random() * 1000)}`;
-      const invoiceNumber = `INV-${timestamp}-${Math.floor(Math.random() * 1000)}`;
+      const randomStr = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const orderNumber = `ORD-${timestamp}-${randomStr}`;
+      const invoiceNumber = `INV-${timestamp}-${randomStr}`;
 
-      // Generate a mock UPI link. In a real system, you'd insert business UPI ID here
-      const businessUpiId = "business@upi";
+      // Calculate UPI Deep Link (No longer using external gateway)
+      const businessUpiId = process.env.BUSINESS_UPI_ID || 'kammatstea@ybl';
       const upiLink = `upi://pay?pa=${businessUpiId}&pn=KammatsTea&tr=${orderNumber}&am=${totalAmount}&cu=INR`;
 
       // Create the order
@@ -106,8 +198,8 @@ router.post('/', async (req, res) => {
           gstTotal,
           grandTotal,
           totalAmount,
-
-
+          paymentStatus: 'PENDING',
+          orderStatus: 'PROCESSING',
           items: {
             create: orderItemsData
           }
@@ -117,14 +209,31 @@ router.post('/', async (req, res) => {
         }
       });
 
-      // 7. Sync to Google Sheets (Mock implementation)
-      // await syncToGoogleSheets(newOrder);
-
-      // 8. Prepare Notifications (Mock implementation)
-      // await sendOrderNotifications(newOrder);
-
       return { order: newOrder, upiLink };
     });
+
+    // Generate PDFs and send emails asynchronously in background
+    (async () => {
+        try {
+            console.log(`Generating communication artifacts for order ${orderResult.order.orderNumber}`);
+
+            // 1. Generate PDFs
+            const customerPdf = await generateInvoicePDFBuffer(orderResult.order, 'CUSTOMER');
+            const internalPdf = await generateInvoicePDFBuffer(orderResult.order, 'INTERNAL');
+
+            // 2. Send Emails (if email provided)
+            await sendCustomerConfirmationEmail(orderResult.order, customerPdf);
+            await sendAdminNotificationEmail(orderResult.order, internalPdf);
+
+            // 3. Log Success
+            console.log(`Successfully dispatched communication for ${orderResult.order.orderNumber}`);
+
+            // We could also trigger whatsapp API here if we had keys
+
+        } catch (commError) {
+             console.error(`Failed background communications for ${orderResult.order.orderNumber}`, commError);
+        }
+    })();
 
     res.status(201).json(orderResult);
 
@@ -134,47 +243,5 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Generate Invoice
-router.get('/:id/invoice', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: { items: true }
-    });
-
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    generateInvoicePDF(order, res);
-
-  } catch (error) {
-    console.error('Error generating invoice:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to generate invoice' });
-    }
-  }
-});
-
-// Get a single order by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: { items: true }
-    });
-
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    res.json(order);
-  } catch (error) {
-    console.error('Error fetching order:', error);
-    res.status(500).json({ error: 'Failed to fetch order' });
-  }
-});
 
 export default router;
