@@ -1,4 +1,12 @@
-import PDFDocument from 'pdfkit';
+import re
+
+with open('server/src/utils/invoice.ts', 'r') as f:
+    content = f.read()
+
+# Modify generateInvoicePDFBuffer to add QR Code / UPI
+# Also write file to disk
+
+new_code = """import PDFDocument from 'pdfkit';
 import { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -26,7 +34,7 @@ export const generateInvoicePDFBuffer = async (order: any, type: 'CUSTOMER' | 'I
                  invoiceUrl = `/uploads/invoices/${fileName}`;
              }
 
-             resolve({buffer, ...(invoiceUrl && {url: invoiceUrl})});
+             resolve({buffer, url: invoiceUrl});
         });
         doc.on('error', reject);
 
@@ -153,3 +161,7 @@ export const generateInvoicePDF = async (order: any, type: 'CUSTOMER' | 'INTERNA
         }
     }
 };
+"""
+
+with open('server/src/utils/invoice.ts', 'w') as f:
+    f.write(new_code)

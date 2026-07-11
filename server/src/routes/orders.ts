@@ -1,7 +1,8 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { generateInvoicePDF, generateInvoicePDFBuffer } from '../utils/invoice';
-import { sendCustomerConfirmationEmail, sendAdminNotificationEmail } from '../utils/communications';
+import { sendCustomerConfirmationEmail, sendAdminNotificationEmail, sendWhatsAppInvoice } from '../utils/communications';
+import { appendOrderRow } from '../utils/sheets';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -218,17 +219,28 @@ router.post('/', async (req, res) => {
             console.log(`Generating communication artifacts for order ${orderResult.order.orderNumber}`);
 
             // 1. Generate PDFs
-            const customerPdf = await generateInvoicePDFBuffer(orderResult.order, 'CUSTOMER');
-            const internalPdf = await generateInvoicePDFBuffer(orderResult.order, 'INTERNAL');
+            const customerPdfData = await generateInvoicePDFBuffer(orderResult.order, 'CUSTOMER');
+            const internalPdfData = await generateInvoicePDFBuffer(orderResult.order, 'INTERNAL');
+
+            if (customerPdfData.url) {
+                await prisma.order.update({
+                    where: { id: orderResult.order.id },
+                    data: { invoiceUrl: customerPdfData.url }
+                });
+            }
 
             // 2. Send Emails (if email provided)
-            await sendCustomerConfirmationEmail(orderResult.order, customerPdf);
-            await sendAdminNotificationEmail(orderResult.order, internalPdf);
+            await sendCustomerConfirmationEmail(orderResult.order, customerPdfData.buffer);
+            await sendAdminNotificationEmail(orderResult.order, internalPdfData.buffer);
 
-            // 3. Log Success
+            // 3. Sync to Google Sheets
+            await appendOrderRow(orderResult.order);
+
+            // 4. Log Success
             console.log(`Successfully dispatched communication for ${orderResult.order.orderNumber}`);
 
-            // We could also trigger whatsapp API here if we had keys
+            // 5. Send WhatsApp Invoice
+            await sendWhatsAppInvoice(orderResult.order, customerPdfData.url);
 
         } catch (commError) {
              console.error(`Failed background communications for ${orderResult.order.orderNumber}`, commError);

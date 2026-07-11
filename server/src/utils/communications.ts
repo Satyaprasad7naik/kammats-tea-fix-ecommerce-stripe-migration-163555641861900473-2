@@ -102,3 +102,32 @@ export const generateWhatsAppMessage = (order: any, isAdmin: boolean = false) =>
         return `Hi ${order.customerName}, thank you for your order from Spylt! 🥤\n\n*Order ID:* ${order.orderNumber}\n*Total Amount:* ₹${order.totalAmount}\n\nYour order is currently processing. You can download your invoice from the checkout success page.`;
     }
 };
+
+
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+export const sendWhatsAppInvoice = async (order: any, invoiceUrl?: string) => {
+    console.log(`[WhatsApp Stub] Sending Invoice for Order ${order.orderNumber} to ${order.phone}`);
+    console.log(`Message: Hello ${order.customerName}, your order has been received. Please pay using the invoice QR. Total: Rs. ${order.totalAmount}`);
+    if (invoiceUrl) {
+        console.log(`Attachment URL: ${invoiceUrl}`);
+    }
+
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // For now, always succeed
+    await prisma.order.update({
+        where: { id: order.id },
+        data: { whatsappStatus: 'SENT' }
+    });
+};
+
+export const sendWhatsAppPaymentConfirmation = async (order: any) => {
+    console.log(`[WhatsApp Stub] Sending Payment Confirmation for Order ${order.orderNumber} to ${order.phone}`);
+    console.log(`Message: Hello ${order.customerName}, we have successfully received your payment of Rs. ${order.totalAmount}. Your order is now confirmed.`);
+
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+};

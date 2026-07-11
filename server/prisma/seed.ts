@@ -91,6 +91,17 @@ const products = [
 
 async function main() {
   console.log('Seeding products...');
+
+  console.log('Seeding admin...');
+  const bcrypt = require('bcryptjs');
+  const passwordHash = await bcrypt.hash('admin123', 10);
+  await prisma.admin.create({
+    data: {
+      username: 'admin',
+      password: passwordHash
+    }
+  });
+
   for (const product of products) {
     await prisma.product.create({
       data: product,
