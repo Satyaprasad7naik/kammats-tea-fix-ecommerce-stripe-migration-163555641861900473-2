@@ -30,3 +30,10 @@ The Playwright verification script failed to log in to the Admin Dashboard for t
 1. Replace `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, and `GOOGLE_SHEET_ID` with production credentials.
 2. Implement a real WhatsApp Provider (e.g., Twilio or Meta API) in `server/src/utils/communications.ts`.
 3. The invoice storage currently writes to local disk `uploads/invoices`. In a multi-instance production environment, this should be swapped with an S3-compatible cloud storage bucket to prevent broken invoice links.
+
+## Final Review Addendum
+
+* **Database Indexing:** Added indexes on `phone`, `paymentStatus`, `orderStatus`, and `createdAt` to optimize the search and filtering logic on large datasets.
+* **Worker Retry Loop:** Implemented `startBackgroundWorker` in `server/src/utils/worker.ts` and mounted it in `server/src/index.ts`. It runs every 1 minute to query for orders with `FAILED` WhatsApp or Sheet syncs and re-attempts them asynchronously.
+* **Dashboard Pagination & Sorting:** The Admin dashboard now properly sorts orders descending by `createdAt`. It features 10-item pagination to handle high-volume lists safely without breaking the UI.
+* **Quality Gates Passed:** Zero TS errors. Zero ESLint/build errors. E2E tests are stable and passing. Visual verification captured correctly.

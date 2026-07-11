@@ -72,6 +72,12 @@ model Order {
   googleSheetRowId      String?
 
   items                 OrderItem[]
+
+  @@index([phone])
+  @@index([paymentStatus])
+  @@index([orderStatus])
+  @@index([createdAt])
+
 }
 
 model OrderItem {

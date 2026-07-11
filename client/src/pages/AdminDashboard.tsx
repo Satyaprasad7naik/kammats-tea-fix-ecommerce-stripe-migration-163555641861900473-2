@@ -11,9 +11,19 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ordersPerPage = 10;
+  const [dateFilter, setDateFilter] = useState('');
+  useEffect(() => {
+     setCurrentPage(1);
+  }, [searchTerm, statusFilter, paymentFilter, dateFilter]);
+
 
 
   useEffect(() => {
@@ -138,14 +148,23 @@ const AdminDashboard = () => {
   };
 
 
+
   const filteredOrders = orders.filter(o => {
       const matchesSearch = o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (o.customerName && o.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
                             (o.phone && o.phone.includes(searchTerm));
       const matchesStatus = statusFilter ? o.orderStatus === statusFilter : true;
       const matchesPayment = paymentFilter ? o.paymentStatus === paymentFilter : true;
-      return matchesSearch && matchesStatus && matchesPayment;
-  });
+      const matchesDate = dateFilter ? new Date(o.createdAt).toISOString().split('T')[0] === dateFilter : true;
+      return matchesSearch && matchesStatus && matchesPayment && matchesDate;
+  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Pagination logic
+  const indexOfLastOrder = currentPage * ordersPerPage;
+  const indexOfFirstOrder = indexOfLastOrder - ordersPerPage;
+  const currentOrders = filteredOrders.slice(indexOfFirstOrder, indexOfLastOrder);
+  const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+
 
   if (!isAuthenticated) {
     return (
@@ -213,6 +232,7 @@ const AdminDashboard = () => {
           </div>
         ) : (
           <>
+
         <div className="flex flex-col md:flex-row gap-4 mb-6">
             <input
                 type="text"
@@ -233,7 +253,14 @@ const AdminDashboard = () => {
                 <option value="PENDING">PENDING</option>
                 <option value="PAID">PAID</option>
             </select>
+            <input
+                type="date"
+                className="px-4 py-2 border rounded text-gray-600"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+            />
         </div>
+
 
 <div className="bg-white rounded-xl shadow overflow-hidden">
             <div className="overflow-x-auto">
@@ -251,12 +278,12 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.length === 0 ? (
+                  {currentOrders.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-gray-500">No orders found.</td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => (
+                    currentOrders.map((order) => (
                       <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="p-4 font-mono text-sm font-medium">{order.orderNumber}</td>
                         <td className="p-4 text-sm text-gray-600">{new Date(order.createdAt).toLocaleDateString()}</td>
@@ -307,9 +334,31 @@ const AdminDashboard = () => {
               </table>
             </div>
           </div>
+
           </>
         )}
+
+        {!loading && totalPages > 1 && (
+            <div className="flex justify-between items-center mt-6">
+               <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-white border border-gray-300 rounded font-bold text-sm text-gray-700 disabled:opacity-50 hover:bg-gray-50"
+               >
+                   Previous
+               </button>
+               <span className="text-sm font-bold text-gray-600">Page {currentPage} of {totalPages}</span>
+               <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 bg-white border border-gray-300 rounded font-bold text-sm text-gray-700 disabled:opacity-50 hover:bg-gray-50"
+               >
+                   Next
+               </button>
+            </div>
+        )}
       </div>
+
     </div>
   );
 };
